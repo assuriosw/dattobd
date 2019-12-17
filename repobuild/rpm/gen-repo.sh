@@ -39,18 +39,23 @@ cp -r $dir/../../pkgbuild/SRPMS/*       $pool
 echo "%_gpg_name Assurio Software Package Developers <packages@assurio.com>" >> ~/.rpmmacros
 
 #Sign packages
-find $pool -type f -name "*.rpm" -exec $dir/rpm-sign.exp {} \;
+for f in `ls $pool/*.rpm`; do
+    $dir/rpm-sign.exp $f || die "Failed to sign rpm"
+done
 
 # Generate repodata/repomd.xml
-createrepo $cent6/x86_64
+createrepo $cent6/x86_64 || die "Failed to create repomd.xml"
 
 # Sign repository (repomd.xml files)
-gpg2 --default-key $GPG_KEY_ID --batch --yes --no-tty --armor --digest-algo SHA256 --detach-sign $cent6/x86_64/repodata/repomd.xml
+gpg2 --default-key $GPG_KEY_ID --batch --yes --no-tty --armor --digest-algo SHA256 --detach-sign $cent6/x86_64/repodata/repomd.xml || \
+    die "Failed to sign repomd.xml file."
 
 # Generate 'mirrors'
-mirrors_content="http://$bucket.s3.amazonaws.com/repo/assurio-snap/$branch/rpm/CentOS/\$releasever/\$basearch"
-for t in '' 'Client' 'Server' 'Workstation'; do
-	echo $mirrors_content > $out/CentOS/mirrors/6$t
+mirrors_content="http://$bucket.s3.amazonaws.com/repo/assurio-snap/$branch/rpm/CentOS/6/\$basearch"
+for ver in 6 7 8; do
+    for kind in '' 'Client' 'Server' 'Workstation'; do
+        echo $mirrors_content > $out/CentOS/mirrors/$ver$kind
+    done
 done
 
 # Show repo's tree to the log
