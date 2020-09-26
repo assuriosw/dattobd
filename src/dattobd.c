@@ -580,7 +580,7 @@ static inline void dattobd_inode_unlock(struct inode *inode){
 	#define dattobd_inode_unlock inode_unlock
 #endif
 
-#ifndef HAVE_PROC_CREATE
+#if !defined HAVE_PROC_CREATE_FN_FILE_OPERATIONS && !defined HAVE_PROC_CREATE_FN_PROC_OPS
 //#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25)
 static inline struct proc_dir_entry *proc_create(const char *name, mode_t mode, struct proc_dir_entry *parent, const struct file_operations *proc_fops){
 	struct proc_dir_entry *ent;
@@ -934,6 +934,14 @@ static const struct seq_operations dattobd_seq_proc_ops = {
 	.show = dattobd_proc_show,
 };
 
+#ifdef HAVE_PROC_CREATE_FN_PROC_OPS
+static const struct proc_ops dattobd_proc_fops = {
+	.proc_open = dattobd_proc_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = dattobd_proc_release,
+};
+#else
 static const struct file_operations dattobd_proc_fops = {
 	.owner = THIS_MODULE,
 	.open = dattobd_proc_open,
@@ -941,6 +949,7 @@ static const struct file_operations dattobd_proc_fops = {
 	.llseek = seq_lseek,
 	.release = dattobd_proc_release,
 };
+#endif
 
 static int major;
 static struct mutex ioctl_mutex;
