@@ -72,6 +72,9 @@ jobs:
       - baremetal
 
     steps:
+      - name: Checkout sources 
+        uses: actions/checkout@v2
+
       - name: Make manifest
         run: echo ${{env.GITHUB_RUN_NUMBER}} > latest
 
@@ -88,6 +91,9 @@ jobs:
       - baremetal
 
     steps:
+      - name: Checkout sources 
+        uses: actions/checkout@v2
+
       - name: Dispatch packaging repo
         env:
           REPO_HOOK_TOKEN: ${{ secrets.REPO_HOOK_TOKEN }}
