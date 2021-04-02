@@ -37,7 +37,8 @@ MODULE_VERSION(DATTOBD_VERSION);
 #endif
 
 #ifdef HAVE_BLK_ALLOC_QUEUE_MK_REQ_FN_NODE_ID
-#include "linux/blk-mq.h"
+#include <linux/blk-mq.h>
+#include <linux/percpu-refcount.h>
 #endif
 
 #ifndef HAVE_BIO_LIST
@@ -3167,7 +3168,7 @@ call_orig:
 	if(orig_mrf) ret = dattobd_call_mrf(orig_mrf, q, bio);
 	else LOG_ERROR(-EFAULT, "error finding original_mrf");
 #else
-	ret = elastio_snap_call_mrf(orig_mrf, q, bio);
+	ret = dattobd_call_mrf(orig_mrf, q, bio);
 #endif
 out:
 	MRF_RETURN(ret);
