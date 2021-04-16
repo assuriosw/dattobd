@@ -86,20 +86,21 @@ jobs:
         run: |
           qemu-img create -f qcow2 ${TEST_IMAGE} 1G
           virsh attach-disk --domain ${BOX_DIR##*/}_${INSTANCE_NAME} --source ${TEST_IMAGE} --target vdb --driver qemu --subdriver qcow2 --targetbus virtio
-          cd $BOX_DIR && vagrant ssh ${{env.INSTANCE_NAME}} -c 'echo -e "n\np\n\n\n\nw" | sudo fdisk /dev/vdb'
+          vagrant ssh ${{env.INSTANCE_NAME}} -c 'echo -e "n\np\n\n\n\nw" | sudo fdisk /dev/vdb'
+        working-directory: ${{env.BOX_DIR}}
 
       - name: Run tests (qcow2 disk)
-        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh /dev/vdb"
+        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh /dev/vdb1"
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 5
 
-      - name: Detach external drive
-        if: always()
-        run: |
-          sleep 5
-          if virsh domblklist ${BOX_DIR##*/}_${INSTANCE_NAME} --details | grep "file" | awk '{ print $NF }' | grep ${TEST_IMAGE} ; then
-              virsh detach-disk --domain ${BOX_DIR##*/}_${INSTANCE_NAME} ${TEST_IMAGE}
-          fi
+        #- name: Detach external drive
+        #  if: always()
+        #  run: |
+        #    sleep 5
+        #    if virsh domblklist ${BOX_DIR##*/}_${INSTANCE_NAME} --details | grep "file" | awk '{ print $NF }' | grep ${TEST_IMAGE} ; then
+        #        virsh detach-disk --domain ${BOX_DIR##*/}_${INSTANCE_NAME} ${TEST_IMAGE}
+        #    fi
 
       - name: Upload artifacts
         run: vagrant ssh ${{env.INSTANCE_NAME}} -c 'AWS_SECRET_ACCESS_KEY='"'$AWS_SECRET_ACCESS_KEY'"' repobuild/upload.sh
