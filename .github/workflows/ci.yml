@@ -21,7 +21,7 @@ jobs:
           centos7, centos8,
           amazon2,
           fedora31, fedora32
-          # - Fedora 33 when kernel 5.10 is supported.
+          # - Fedora 33 when kernel 5.11 is supported.
           # fedora33
         ]
         arch: [ amd64 ]
