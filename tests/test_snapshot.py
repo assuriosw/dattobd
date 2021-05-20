@@ -41,8 +41,9 @@ class TestSnapshot(DeviceTestCase):
             f.write("jumps over the lazy dog")
 
         os.sync()
-
-        util.mount(self.snap_device, self.snap_mount, opts="ro")
+        # TODO: norecovery option, probably, should not be here after the fix of the elastio/elastio-snap#63
+        opts = "nouuid,norecovery,ro" if (self.fs == "xfs") else "ro"
+        util.mount(self.snap_device, self.snap_mount, opts)
         self.addCleanup(util.unmount, self.snap_mount)
 
         md5_snap = util.md5sum(snapfile)

@@ -13,6 +13,8 @@ jobs:
     name: Build Packages
     runs-on:
       - baremetal
+    env:
+      FS: ext2 ext3 ext4 xfs
 
     strategy:
       matrix:
@@ -77,7 +79,10 @@ jobs:
         working-directory: ${{env.BOX_DIR}}
 
       - name: Run tests (loop device)
-        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh"
+        run: |
+          for fs in ${FS[*]}; do
+            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -f $fs"
+          done
         working-directory: ${{env.BOX_DIR}}
         # For now tests are taking 10-20 seconds. But they can hang.
         # 5 minutes seems to be reasonable timeout.
@@ -90,7 +95,10 @@ jobs:
           cd $BOX_DIR && vagrant ssh ${{env.INSTANCE_NAME}} -c 'echo -e "n\np\n\n\n\nw" | sudo fdisk /dev/vdb'
 
       - name: Run tests (qcow2 disk)
-        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh /dev/vdb1"
+        run: |
+          for fs in ${FS[*]}; do
+            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 -f $fs"
+          done
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 5
 
