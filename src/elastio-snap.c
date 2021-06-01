@@ -3675,6 +3675,7 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 	struct super_block *origsb = elastio_snap_get_super(bdev);
 #ifdef HAVE_THAW_BDEV_INT
 	struct super_block *sb = NULL;
+	char fs_frozen = 0;
 #endif
 	char bdev_name[BDEVNAME_SIZE];
 	MAYBE_UNUSED(ret);
@@ -3685,7 +3686,48 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 		drop_super(origsb);
 
 		//freeze and sync block device
-		LOG_DEBUG("freezing '%s'", bdev_name);
+		LOG_DEBUG("freezing '%s' with filesystem '%s'", bdev_name, origsb->s_type->name);
+#ifdef HAVE_FREEZE_SUPER
+//#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
+		ret = freeze_super(origsb);
+		if(ret){
+			LOG_ERROR((ret), "error freezing super for '%s': error", bdev_name);
+			drop_super(origsb);
+			return ret;
+		}
+#else
+		// ext2 doesn't have freeze_fs func in the super_operations
+		// but at least sync_fs with wait makes fs consistent in the snapshot
+		if(strcmp(origsb->s_type->name, "ext2") == 0 && origsb->s_op->sync_fs){
+			ret = origsb->s_op->sync_fs(origsb, 1);
+			if(ret){
+				LOG_ERROR((ret), "error syncing fs for '%s': error", bdev_name);
+				drop_super(origsb);
+				return ret;
+			}
+		}else if(strcmp(origsb->s_type->name, "xfs") == 0 && origsb->s_op->freeze_fs && origsb->s_op->unfreeze_fs){
+		// xfs v.3 doesn't sync and freeze fs in the freeze_bdev function
+		// so, doing so explictely before the freeze_bdev call
+			ret = origsb->s_op->freeze_fs(origsb);
+			if(ret){
+				LOG_ERROR((ret), "error freezing fs for '%s': error", bdev_name);
+				drop_super(origsb);
+				return ret;
+			}
+			fs_frozen = 1;
+		}
+
+		sb = freeze_bdev(bdev);
+		if(!sb){
+			LOG_ERROR(-EFAULT, "error freezing '%s': null", bdev_name);
+			drop_super(origsb);
+			return -EFAULT;
+		}else if(IS_ERR(sb)){
+			LOG_ERROR((int)PTR_ERR(sb), "error freezing '%s': error", bdev_name);
+			drop_super(origsb);
+			return (int)PTR_ERR(sb);
+		}
+#endif
 #ifdef HAVE_THAW_BDEV_INT
 		sb = freeze_bdev(bdev);
 		ret = (IS_ERR(sb)) ? PTR_ERR(sb) : 0;
@@ -3730,7 +3772,20 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 	if(origsb){
 		//thaw the block device
 		LOG_DEBUG("thawing '%s'", bdev_name);
-#ifdef HAVE_THAW_BDEV_INT
+
+#ifdef HAVE_FREEZE_SUPER
+		ret = thaw_super(origsb);
+#else
+		if(fs_frozen){
+			ret = origsb->s_op->unfreeze_fs(origsb);
+			if(ret)
+				LOG_ERROR(ret, "error thawing filesystem on '%s'", bdev_name);
+		}
+#endif
+#ifndef HAVE_THAW_BDEV_INT
+//#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,29)
+		thaw_bdev(bdev, sb);
+#else
 		ret = thaw_bdev(bdev, sb);
 #else
 		ret = thaw_bdev(bdev);
