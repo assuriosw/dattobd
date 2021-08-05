@@ -1006,7 +1006,7 @@ static int elastio_snap_proc_release(struct inode *inode, struct file *file);
 
 // wait msec value to be at least 100 msec as wait loop uses it by msleep of (100) timeout pieces
 #define ELASTIO_SNAP_WAIT_FOR_RELEASE_MSEC              500
-#define ELASTIO_SNAP_WAIT_FOR_RELEASE_TIMEOUT_PEICE_CNT 100
+#define ELASTIO_SNAP_WAIT_FOR_RELEASE_MAX_SLEEP_COUNT   100
 static void elastio_snap_wait_for_release(struct snap_device *dev);
 
 #ifdef USE_BDOPS_SUBMIT_BIO
@@ -5362,8 +5362,8 @@ static void elastio_snap_wait_for_release(struct snap_device *dev)
 	int prev_state = current->state;
 	int i = 0;
 	set_current_state(TASK_INTERRUPTIBLE);
-	while (atomic_read(&dev->sd_refs) && i < ELASTIO_SNAP_WAIT_FOR_RELEASE_TIMEOUT_PEICE_CNT) {
-		msleep(ELASTIO_SNAP_WAIT_FOR_RELEASE_MSEC / ELASTIO_SNAP_WAIT_FOR_RELEASE_TIMEOUT_PEICE_CNT);
+	while (atomic_read(&dev->sd_refs) && i < ELASTIO_SNAP_WAIT_FOR_RELEASE_MAX_SLEEP_COUNT) {
+		msleep(ELASTIO_SNAP_WAIT_FOR_RELEASE_MSEC / ELASTIO_SNAP_WAIT_FOR_RELEASE_MAX_SLEEP_COUNT);
 		++i;
 	}
 	set_current_state(prev_state);
