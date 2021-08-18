@@ -1633,8 +1633,11 @@ static int elastio_snap_do_truncate(struct dentry *dentry, loff_t length, unsign
 #ifdef HAVE_NOTIFY_CHANGE_2
 //#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 	ret = notify_change(dentry, &newattrs);
-#else
+#elif defined HAVE_NOTIFY_CHANGE_3
+//#if LINUX_VERSION_CODE < KERNEL_VERSION(5,12,0)
 	ret = notify_change(dentry, &newattrs, NULL);
+#else
+	ret = notify_change(&init_user_ns, dentry, &newattrs, NULL);
 #endif
 	elastio_snap_inode_unlock(dentry->d_inode);
 
@@ -1808,8 +1811,11 @@ static int __file_unlink(struct file *filp, int close, int force){
 #ifdef HAVE_VFS_UNLINK_2
 //#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 	ret = vfs_unlink(dir_inode, file_dentry);
-#else
+#elif defined HAVE_VFS_UNLINK_3
+//#if LINUX_VERSION_CODE < KERNEL_VERSION(5,12,0)
 	ret = vfs_unlink(dir_inode, file_dentry, NULL);
+#else
+	ret = vfs_unlink(&init_user_ns, dir_inode, file_dentry, NULL);
 #endif
 	if(ret){
 		LOG_ERROR(ret, "error unlinking file");
