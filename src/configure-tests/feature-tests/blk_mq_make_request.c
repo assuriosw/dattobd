@@ -4,9 +4,10 @@
  * Copyright (C) 2021 Elastio Software Inc.
  */
 
-// 5.7 <= kernel_version
+// 5.8 == kernel_version
 
 #include "includes.h"
+MODULE_LICENSE("GPL");
 
 static inline void dummy(void){
 	struct request_queue rq;
