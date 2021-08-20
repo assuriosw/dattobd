@@ -38,7 +38,7 @@ MODULE_VERSION(ELASTIO_SNAP_VERSION);
 #include <uapi/linux/mount.h>
 #endif
 
-#if defined HAVE_BLK_ALLOC_QUEUE_MK_REQ_FN_NODE_ID || defined USE_BDOPS_SUBMIT_BIO
+#if defined HAVE_BLK_ALLOC_QUEUE_MK_REQ_FN_NODE_ID || defined USE_BDOPS_SUBMIT_BIO || defined HAVE_BLK_MQ_MAKE_REQUEST
 #include <linux/blk-mq.h>
 #include <linux/percpu-refcount.h>
 #endif
@@ -625,6 +625,11 @@ static inline int elastio_snap_call_mrf(make_request_fn *fn, struct bio *bio){
 static inline MRF_RETURN_TYPE elastio_snap_null_mrf(struct request_queue *q, struct bio *bio){
 	percpu_ref_get(&q->q_usage_counter);
 	return blk_mq_make_request(q, bio);
+}
+#elif defined HAVE_BLK_MQ_MAKE_REQUEST
+static inline MRF_RETURN_TYPE elastio_snap_null_mrf(struct request_queue *q, struct bio *bio){
+	smp_wmb();
+	return blk_mq_make_request(q, bio);    
 }
 #endif
 #endif
@@ -3381,6 +3386,13 @@ static int find_orig_mrf(struct block_device *bdev, make_request_fn **mrf){
 #else
 		// Linux versions older than 5.8
 		*mrf = q->make_request_fn;
+#ifdef HAVE_BLK_MQ_MAKE_REQUEST
+		if (!*mrf)
+		{
+			*mrf = elastio_snap_null_mrf;
+			LOG_DEBUG("original mrf is empty, set to elastio_snap_null_mrf with blk_mq_make_request");
+		}
+#endif        
 #endif
 #else
 		// Linux version 5.8

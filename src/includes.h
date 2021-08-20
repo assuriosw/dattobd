@@ -11,6 +11,8 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/blkdev.h>
+#include <linux/blk_types.h>
+#include <linux/blk-mq.h>
 #include <linux/genhd.h>
 #include <linux/kthread.h>
 #include <linux/miscdevice.h>
