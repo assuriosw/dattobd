@@ -513,6 +513,13 @@ static int elastio_snap_should_remove_suid(struct dentry *dentry)
 }
 
 
+#ifdef HAVE_BIO_BI_BDEV_BD_DISK
+	#define elastio_snap_bio_bi_disk(bio) ((bio)->bi_bdev->bd_disk)
+#else
+//#if LINUX_VERSION_CODE < KERNEL_VERSION(5,12,0)
+	#define elastio_snap_bio_bi_disk(bio) ((bio)->bi_disk)
+#endif
+
 #ifdef HAVE_BLKDEV_PUT_1
 //#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,28)
 	#define elastio_snap_blkdev_put(bdev) blkdev_put(bdev);
@@ -642,7 +649,7 @@ blk_qc_t (*elastio_blk_mq_submit_bio)(struct bio *) = (blk_qc_t (*)(struct bio *
 #endif
 
 static inline MRF_RETURN_TYPE elastio_snap_null_mrf(struct bio *bio){
-	percpu_ref_get(&bio->bi_disk->queue->q_usage_counter);
+	percpu_ref_get(&elastio_snap_bio_bi_disk(bio)->queue->q_usage_counter);
 	return elastio_blk_mq_submit_bio(bio);
 }
 
@@ -739,7 +746,7 @@ static inline struct request_queue *elastio_snap_bio_get_queue(struct bio *bio){
 //#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
 	return bdev_get_queue(bio->bi_bdev);
 #else
-	return bio->bi_disk->queue;
+	return elastio_snap_bio_bi_disk(bio)->queue;
 #endif
 }
 
@@ -860,6 +867,10 @@ static inline void elastio_snap_bio_copy_dev(struct bio *dst, struct bio *src){
 
 #define ELASTIO_SNAP_DEFAULT_SNAP_DEVICES 24
 #define ELASTIO_SNAP_MAX_SNAP_DEVICES 255
+
+#if !defined BIO_MAX_PAGES && defined BIO_MAX_VECS
+#define BIO_MAX_PAGES BIO_MAX_VECS
+#endif
 
 //global module parameters
 static int elastio_snap_may_hook_syscalls = 1;
@@ -3283,13 +3294,13 @@ call_orig:
 #ifdef USE_BDOPS_SUBMIT_BIO
 	// Linux version 5.9+
 	if(orig_mrf) ret = elastio_snap_call_mrf(orig_mrf, bio);
-	else if (bio->bi_disk->fops->submit_bio == tracing_mrf){
+	else if (elastio_snap_bio_bi_disk(bio)->fops->submit_bio == tracing_mrf){
 		//original_mrf is not found, however bio's submit_bio is tracing_mrf. so, usual way is applicable
 		LOG_WARN("error finding original_mrf for the traced bio");
 		ret = elastio_snap_null_mrf(bio);
-	}else if(bio->bi_disk->fops->submit_bio){
+	}else if(elastio_snap_bio_bi_disk(bio)->fops->submit_bio){
 		LOG_WARN("error finding original_mrf, but bio's submit_bio is not empty");
-		ret = bio->bi_disk->fops->submit_bio(bio);
+		ret = elastio_snap_bio_bi_disk(bio)->fops->submit_bio(bio);
 	}else{
 		LOG_WARN("error finding original_mrf. all are empty");
 		ret = submit_bio_noacct(bio);
@@ -3309,7 +3320,7 @@ static MRF_RETURN_TYPE snap_mrf(struct request_queue *q, struct bio *bio){
 #else
 // Linux version >= 5.9
 static MRF_RETURN_TYPE snap_mrf(struct bio *bio){
-	struct snap_device *dev = bio->bi_disk->queue->queuedata;
+	struct snap_device *dev = elastio_snap_bio_bi_disk(bio)->queue->queuedata;
 #endif
 	//if a write request somehow gets sent in, discard it
 	if(bio_data_dir(bio)){
