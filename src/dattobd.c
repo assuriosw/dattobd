@@ -3237,7 +3237,7 @@ static int find_orig_mrf(struct block_device *bdev, make_request_fn **mrf){
 	struct request_queue *q = bdev_get_queue(bdev);
 
 	if(q->make_request_fn != tracing_mrf){
-#ifndef HAVE_BLK_ALLOC_QUEUE_MK_REQ_FN_NODE_ID
+#ifndef HAVE_BLK_MQ_MAKE_REQUEST
 		*mrf = q->make_request_fn;
 #else
 		if (q->make_request_fn) *mrf = q->make_request_fn;
