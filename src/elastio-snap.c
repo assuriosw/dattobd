@@ -741,7 +741,7 @@ static inline ssize_t elastio_snap_kernel_write(struct file *filp, const void *b
 }
 
 static inline struct request_queue *elastio_snap_bio_get_queue(struct bio *bio){
-#ifdef HAVE_BIO_BI_BDEV
+#if defined HAVE_BIO_BI_BDEV && defined HAVE_MAKE_REQUEST_FN_IN_QUEUE
 //#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
 	return bdev_get_queue(bio->bi_bdev);
 #else
@@ -750,7 +750,7 @@ static inline struct request_queue *elastio_snap_bio_get_queue(struct bio *bio){
 }
 
 static inline void elastio_snap_bio_set_dev(struct bio *bio, struct block_device *bdev){
-#ifdef HAVE_BIO_BI_BDEV
+#if defined HAVE_BIO_BI_BDEV && defined HAVE_MAKE_REQUEST_FN_IN_QUEUE
 //#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
 	bio->bi_bdev = bdev;
 #else
@@ -759,7 +759,7 @@ static inline void elastio_snap_bio_set_dev(struct bio *bio, struct block_device
 }
 
 static inline void elastio_snap_bio_copy_dev(struct bio *dst, struct bio *src){
-#ifdef HAVE_BIO_BI_BDEV
+#if defined HAVE_BIO_BI_BDEV && defined HAVE_MAKE_REQUEST_FN_IN_QUEUE
 //#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
 	dst->bi_bdev = src->bi_bdev;
 #else
