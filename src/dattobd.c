@@ -548,7 +548,7 @@ static inline int dattobd_call_mrf(make_request_fn *fn, struct request_queue *q,
 	#define MRF_RETURN_TYPE blk_qc_t
 	#define MRF_RETURN(ret) return BLK_QC_T_NONE
 
-#ifdef HAVE_BLK_ALLOC_QUEUE_MK_REQ_FN_NODE_ID
+#ifdef HAVE_BLK_MQ_MAKE_REQUEST
 static MRF_RETURN_TYPE elastio_snap_null_mrf(struct request_queue *q, struct bio *bio){
 	percpu_ref_get(&q->q_usage_counter);
 	return blk_mq_make_request(q, bio);
@@ -3235,9 +3235,10 @@ static int find_orig_mrf(struct block_device *bdev, make_request_fn **mrf){
 	int i;
 	struct snap_device *dev;
 	struct request_queue *q = bdev_get_queue(bdev);
+	make_request_fn *orig_mrf = elastio_snap_get_bd_mrf(bdev);
 
 	if(q->make_request_fn != tracing_mrf){
-#ifndef HAVE_BLK_ALLOC_QUEUE_MK_REQ_FN_NODE_ID
+#ifndef HAVE_BLK_MQ_MAKE_REQUEST
 		*mrf = q->make_request_fn;
 #else
 		if (q->make_request_fn) *mrf = q->make_request_fn;
@@ -3246,6 +3247,7 @@ static int find_orig_mrf(struct block_device *bdev, make_request_fn **mrf){
 			LOG_DEBUG("original mrf is empty, set to elastio_snap_null_mrf");
 		}
 #endif
+		*mrf = orig_mrf;
 		return 0;
 	}
 
@@ -3312,7 +3314,7 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 		if(new_mrf) bdev->bd_disk->queue->make_request_fn = new_mrf;
 	}else{
 		LOG_DEBUG("ending tracing");
-#ifdef HAVE_BLK_ALLOC_QUEUE_MK_REQ_FN_NODE_ID
+#ifdef HAVE_BLK_MQ_MAKE_REQUEST
 		if(new_mrf) bdev->bd_disk->queue->make_request_fn = new_mrf == elastio_snap_null_mrf ? NULL : new_mrf;
 #else
 		if(new_mrf) bdev->bd_disk->queue->make_request_fn = new_mrf;
