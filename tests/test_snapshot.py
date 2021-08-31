@@ -8,6 +8,7 @@
 
 import errno
 import os
+import platform
 import unittest
 
 import elastio_snap
@@ -49,6 +50,7 @@ class TestSnapshot(DeviceTestCase):
         md5_snap = util.md5sum(snapfile)
         self.assertEqual(md5_orig, md5_snap)
 
+    @unittest.skipIf(self.fs == "ext2" and int(platform.release().split(".", 1)[0]) < 4, "Broken on ext2, 3-rd kernels")
     def test_track_writes(self):
         testfile = "{}/testfile".format(self.mount)
 
