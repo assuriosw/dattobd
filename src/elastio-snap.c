@@ -3198,8 +3198,11 @@ retry:
 	//
 	if (dev->sd_orig_mrf) {
 		ret = elastio_snap_call_mrf(dev->sd_orig_mrf, new_bio);
+		if (ret) {
+			goto error;
+		}
 	} else {
-		ret = elastio_snap_submit_bio(new_bio);
+		elastio_snap_submit_bio(new_bio);
 	}
 
 	//if our bio didn't cover the entire clone we must keep creating bios until we have
