@@ -131,6 +131,11 @@ void path_put(const struct path *path) {
 typedef mode_t fmode_t;
 #endif
 
+#ifndef HAVE_BLK_ALLOC_QUEUE_MK_REQ_FN_NODE_ID
+struct request_queue* (*elastio_blk_alloc_queue)(int node_id) = (BLK_ALLOC_QUEUE_ADDR != 0) ?
+	(struct request_queue* (*)(int node_id)) (BLK_ALLOC_QUEUE_ADDR + (long long)(((void *)printk) - (void *)PRINTK_ADDR)) : NULL;
+#endif
+
 #ifdef HAVE_BD_SUPER
 #define elastio_snap_get_super_def(bdev) (bdev)->bd_super
 #define elastio_snap_drop_super_def(sb)
@@ -3197,10 +3202,7 @@ retry:
 	// send bio by calling original mrf when its present or call an ordinal submit_bio instead
 	//
 	if (dev->sd_orig_mrf) {
-		ret = elastio_snap_call_mrf(dev->sd_orig_mrf, new_bio);
-		if (ret) {
-			goto error;
-		}
+		elastio_snap_call_mrf(dev->sd_orig_mrf, new_bio);
 	} else {
 		elastio_snap_submit_bio(new_bio);
 	}
@@ -3844,9 +3846,8 @@ static int __tracer_setup_snap(struct snap_device *dev, unsigned int minor, stru
 #ifdef HAVE_BLK_ALLOC_QUEUE_MK_REQ_FN_NODE_ID
 	LOG_DEBUG("allocating queue and setting up make request function");
 	dev->sd_queue = blk_alloc_queue(snap_mrf, NUMA_NO_NODE);
-#else // HAVE_BLK_ALLOC_QUEUE_GFP_T
-	LOG_DEBUG("allocating queue");
-	dev->sd_queue = blk_alloc_queue(GFP_KERNEL);
+#else
+	dev->sd_queue = elastio_blk_alloc_queue(GFP_KERNEL);
 #endif
 
 	if(!dev->sd_queue){
@@ -3855,7 +3856,7 @@ static int __tracer_setup_snap(struct snap_device *dev, unsigned int minor, stru
 		goto error;
 	}
 
-#ifdef HAVE_BLK_ALLOC_QUEUE_GFP_T
+#ifndef HAVE_BLK_ALLOC_QUEUE_MK_REQ_FN_NODE_ID
 	LOG_DEBUG("setting up make request function");
 
 // For the Linux kernel version 5.9+:
@@ -5397,7 +5398,12 @@ static int elastio_snap_proc_release(struct inode *inode, struct file *file){
 
 static void elastio_snap_wait_for_release(struct snap_device *dev)
 {
-	int prev_state = current->state;
+#ifdef HAVE_TASK_STRUCT_STATE
+	// Linux kernel version 5.14+
+	int prev_state = READ_ONCE(current->__state);
+#else
+	int prev_state = READ_ONCE(current->state);
+#endif
 	int i = 0;
 	set_current_state(TASK_INTERRUPTIBLE);
 	while (atomic_read(&dev->sd_refs) && i < ELASTIO_SNAP_WAIT_FOR_RELEASE_MAX_SLEEP_COUNT) {
