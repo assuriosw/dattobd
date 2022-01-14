@@ -3421,7 +3421,7 @@ static int __sync_fs(struct super_block *sb, char *bdev_name){
 		ret = sb->s_op->sync_fs(sb, 1);
 		if(ret){
 			LOG_ERROR((ret), "error syncing fs for '%s': error", bdev_name);
-			elastio_snap_drop_super(sb);
+			drop_super(sb);
 		}
 	}
 	return ret;
@@ -3433,7 +3433,7 @@ static int __freeze_fs(struct super_block *sb, char *bdev_name){
 		ret = sb->s_op->freeze_fs(sb);
 		if(ret){
 			LOG_ERROR((ret), "error freezeng fs for '%s': error", bdev_name);
-			elastio_snap_drop_super(sb);
+			drop_super(sb);
 		}
 	}
 	return ret;
@@ -3441,7 +3441,7 @@ static int __freeze_fs(struct super_block *sb, char *bdev_name){
 
 static int __tracer_transition_tracing(struct snap_device *dev, struct block_device *bdev, make_request_fn *new_mrf, struct snap_device **dev_ptr){
 	int ret;
-	struct super_block *origsb = elastio_snap_get_super(bdev);
+	struct super_block *origsb = get_super(bdev);
 	char fs_frozen = 0;
 #ifndef HAVE_FREEZE_SUPER
 	struct super_block *sb = NULL;
@@ -3469,7 +3469,7 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 			ret = freeze_super(origsb);
 			if(ret){
 				LOG_ERROR((ret), "error freezing super for '%s': error", bdev_name);
-				elastio_snap_drop_super(origsb);
+				drop_super(origsb);
 				return ret;
 			}
 		}
@@ -3490,11 +3490,11 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 		sb = freeze_bdev(bdev);
 		if(!sb){
 			LOG_ERROR(-EFAULT, "error freezing '%s': null", bdev_name);
-			elastio_snap_drop_super(origsb);
+			drop_super(origsb);
 			return -EFAULT;
 		}else if(IS_ERR(sb)){
 			LOG_ERROR((int)PTR_ERR(sb), "error freezing '%s': error", bdev_name);
-			elastio_snap_drop_super(origsb);
+			drop_super(origsb);
 			return (int)PTR_ERR(sb);
 		}
 #endif
@@ -3549,7 +3549,7 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 			//we can't reasonably undo what we've done at this point, and we've replaced the mrf.
 			//pretend we succeeded so we don't break the block device
 		}
-		elastio_snap_drop_super(origsb);
+		drop_super(origsb);
 	}
 
 	return 0;
