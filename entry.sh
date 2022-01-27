@@ -1,0 +1,7 @@
+#!/bin/bash
+#----------------------------------------------------------------------
+#This script will be copied to docker image and launched as entry point
+#----------------------------------------------------------------------
+cd /bdsnap
+make deb RELEASE_NUMBER=$1
+cp pkgbuild/DEBS/all/bdsnap-*.deb pkgbuild/DEBS/amd64/*.deb /build-results
