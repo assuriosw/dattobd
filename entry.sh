@@ -4,4 +4,4 @@
 #----------------------------------------------------------------------
 cd /bdsnap
 make deb RELEASE_NUMBER=$1
-cp pkgbuild/DEBS/all/bdsnap-*.deb pkgbuild/DEBS/amd64/*.deb /build-results
+cp pkgbuild/DEBS/all/elastio-snap-*.deb pkgbuild/DEBS/amd64/*.deb /build-results
