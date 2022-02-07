@@ -21,9 +21,9 @@ RUN wget https://github.com/debbuild/debbuild/archive/20.04.0.tar.gz && \
 RUN addgroup --gid $GROUP_ID user && adduser --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID user
 USER user
 
-COPY --chown=user:user . /bdsnap
+COPY --chown=user:user . /build_dir
 
-RUN cd bdsnap && \
+RUN cd build_dir && \
 	chmod +x entry.sh
 
-ENTRYPOINT ["/bdsnap/entry.sh"]
+ENTRYPOINT ["/build_dir/entry.sh"]
