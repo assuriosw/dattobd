@@ -24,7 +24,7 @@ pipeline
 	}
 	stages
 	{
-		stage('Build bdsnap package')
+		stage('Build package')
 		{
 			steps
 			{
