@@ -107,7 +107,7 @@
 
 Name:            elastio-snap
 Version:         0.10.16
-Release:         1%{?dist}
+Release:         %{_release}
 Summary:         Kernel module and utilities for enabling low-level live backups
 Vendor:          Elastio Software, Inc.
 %if "%{_vendor}" == "debbuild"

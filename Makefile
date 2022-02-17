@@ -10,7 +10,7 @@ export BASE_DIR = $(abspath .)
 BUILDDIR := $(CURDIR)/pkgbuild
 
 # Flags to pass to debbuild/rpmbuild
-PKGBUILDFLAGS := --define "_topdir $(BUILDDIR)" -ba --with devmode
+PKGBUILDFLAGS := --define "_topdir $(BUILDDIR)"  --define "_release $(RELEASE_NUMBER)" -ba --with devmode
 
 # Command to create the build directory structure
 PKGBUILDROOT_CREATE_CMD = mkdir -p $(BUILDDIR)/DEBS $(BUILDDIR)/SDEBS $(BUILDDIR)/RPMS $(BUILDDIR)/SRPMS \
