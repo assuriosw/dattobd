@@ -44,7 +44,7 @@ pipeline
 			{
 				catchError(buildResult: 'FAILURE', stageResult: 'FAILURE')
 				{
-					deployDeb dir: "build-results", map_repo: map_branches, user: "rbrepo", agent: "rep-rb"
+					deployDeb dir: "build-results", map_repo: map_branches, user: "rbrepo", agent: "rep-agent"
 				}
 			}
 		}
@@ -58,7 +58,7 @@ pipeline
 			{
 				catchError(buildResult: 'FAILURE', stageResult: 'FAILURE')
 				{	
-					deployDeb dir: "build-results", map_repo: map_branches, user: "rbrepo", agent: "rep-rb"
+					deployDeb dir: "build-results", map_repo: map_branches, user: "rbrepo", agent: "rep-agent"
 				}
 			}
 		}
