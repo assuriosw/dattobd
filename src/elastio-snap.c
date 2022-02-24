@@ -797,6 +797,7 @@ static inline void elastio_snap_bio_copy_dev(struct bio *dst, struct bio *src){
 #define SNAP_DEVICE_NAME "elastio-snap%d"
 #define SNAP_COW_THREAD_NAME_FMT "elastio_snap_cow%d"
 #define SNAP_MRF_THREAD_NAME_FMT "elastio_snap_mrf%d"
+#define SNAP_BUF_THREAD_NAME_FMT "elastio_snap_buf%d"
 #define INC_THREAD_NAME_FMT "elastio_snap_inc%d"
 
 //macro for iterating over snap_devices (requires a null check on dev)
@@ -983,6 +984,8 @@ struct snap_device{
 	struct bio_queue sd_cow_bios; //list of outstanding cow bios
 	struct task_struct *sd_mrf_thread; //thread for handling file read/writes
 	struct bio_queue sd_orig_bios; //list of outstanding original bios
+	struct task_struct *sd_buf_thread; //thread for processing buffered bios
+	struct bio_queue sd_buf_bios; //list of outstanding buffered bios
 	struct sset_queue sd_pending_ssets; //list of outstanding sector sets
 #ifndef HAVE_BIOSET_INIT
 //#if LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0)
@@ -992,6 +995,8 @@ struct snap_device{
 #endif
 	atomic64_t sd_submitted_cnt; //count of read clones submitted to underlying driver
 	atomic64_t sd_received_cnt; //count of read clones submitted to underlying driver
+    atomic64_t sd_orig_bio_in_queue_cnt;
+	atomic64_t sd_alloc_bio_cnt;
 };
 
 static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
@@ -2654,10 +2659,13 @@ static void bio_destructor_snap_dev(struct bio *bio){
 }
 #endif
 
-static void bio_free_clone(struct bio *bio){
+static void bio_free_clone(struct bio *bio, struct snap_device *dev){
 	bio_iter_t iter;
 	bio_iter_bvec_t bvec;
 	struct page *bv_page;
+
+	atomic64_dec(&dev->sd_alloc_bio_cnt);
+	wake_up(&dev->sd_buf_bios.event);
 
 	bio_for_each_segment(bvec, bio, iter) {
 		bv_page = bio_iter_page(bio, iter);
@@ -2668,8 +2676,9 @@ static void bio_free_clone(struct bio *bio){
 	bio_put(bio);
 }
 
-static int bio_make_read_clone(struct bio_set *bs, struct tracing_params *tp, struct bio *orig_bio, sector_t sect, unsigned int pages, struct bio **bio_out, unsigned int *bytes_added){
+static int bio_make_read_clone(struct snap_device *dev, struct tracing_params *tp, struct bio *orig_bio, sector_t sect, unsigned int pages, struct bio **bio_out, unsigned int *bytes_added){
 	int ret;
+	struct bio_set *bs = dev_bioset(dev);
 	struct bio *new_bio;
 	struct page *pg;
 	unsigned int i, bytes, total = 0, actual_pages = (pages > BIO_MAX_PAGES)? BIO_MAX_PAGES : pages;
@@ -2681,6 +2690,9 @@ static int bio_make_read_clone(struct bio_set *bs, struct tracing_params *tp, st
 		LOG_ERROR(ret, "error allocating bio clone - bs = %p, pages = %u", bs, pages);
 		goto error;
 	}
+
+	atomic64_inc(&dev->sd_alloc_bio_cnt);
+	wake_up(&dev->sd_buf_bios.event);
 
 #ifndef HAVE_BIO_BI_POOL
 	new_bio->bi_destructor = bio_destructor_tp;
@@ -2721,7 +2733,7 @@ static int bio_make_read_clone(struct bio_set *bs, struct tracing_params *tp, st
 
 error:
 	if(ret) LOG_ERROR(ret, "error creating read clone of write bio");
-	if(new_bio) bio_free_clone(new_bio);
+	if(new_bio) bio_free_clone(new_bio, dev);
 
 	*bytes_added = 0;
 	*bio_out = NULL;
@@ -2924,6 +2936,48 @@ error:
 	return ret;
 }
 
+static int snap_process_bio(struct snap_device *dev, struct bio *bio);
+    
+static int snap_buf_thread(void *data){
+	int ret;
+	struct snap_device *dev = data;
+	struct bio_queue *bq = &dev->sd_buf_bios;
+	struct bio *bio;
+
+	MAYBE_UNUSED(ret);
+
+	//give this thread the highest priority we are allowed
+	set_user_nice(current, MIN_NICE);
+
+	while(!kthread_should_stop() || !bio_queue_empty(bq)) {
+		//wait for a bio to process or a kthread_stop call
+        
+		wait_event_interruptible(bq->event, kthread_should_stop() || (!bio_queue_empty(bq) && atomic64_read(&dev->sd_alloc_bio_cnt) == 0));
+        
+		if (bio_queue_empty(bq)) {
+			continue;
+		}
+
+		//safely dequeue a bio
+		bio = bio_queue_dequeue(bq);
+		
+		atomic64_dec(&dev->sd_orig_bio_in_queue_cnt);
+
+		LOG_DEBUG("snap_buf_thread - in queue %llu - alloc cnt %llu - %llu (%llu) - orig bio %p",
+			atomic64_read(&dev->sd_orig_bio_in_queue_cnt),
+			atomic64_read(&dev->sd_alloc_bio_cnt),
+			atomic64_read(&dev->sd_submitted_cnt), atomic64_read(&dev->sd_received_cnt),
+			bio);
+
+        wake_up(&bq->event);
+
+		ret = snap_process_bio(dev, bio);
+
+	}
+
+	return 0;
+}
+
 static int snap_mrf_thread(void *data){
 	int ret;
 	struct snap_device *dev = data;
@@ -2997,7 +3051,7 @@ static int snap_cow_thread(void *data){
 			elastio_snap_bio_endio(bio, (ret)? -EIO : 0);
 		}else{
 			if(is_failed){
-				bio_free_clone(bio);
+				bio_free_clone(bio, dev);
 				continue;
 			}
 
@@ -3007,7 +3061,11 @@ static int snap_cow_thread(void *data){
 				tracer_set_fail_state(dev, ret);
 			}
 
-			bio_free_clone(bio);
+			bio_free_clone(bio, dev);
+			
+			LOG_DEBUG("snap_cow_thread - write - alloc_cnt %llu - %llu (%llu) - bio %p",
+				atomic64_read(&dev->sd_alloc_bio_cnt),
+				atomic64_read(&dev->sd_submitted_cnt), atomic64_read(&dev->sd_received_cnt), bio);
 		}
 	}
 
@@ -3113,8 +3171,8 @@ static void __on_bio_read_complete(struct bio *bio, int err){
 #endif
 
 	//queue cow bio for processing by kernel thread
-	bio_queue_add(&dev->sd_cow_bios, bio);
 	atomic64_inc(&dev->sd_received_cnt);
+	bio_queue_add(&dev->sd_cow_bios, bio);
 	smp_wmb();
 
 	tp_put(tp);
@@ -3125,7 +3183,7 @@ error:
 	LOG_ERROR(ret, "error during bio read complete callback");
 	tracer_set_fail_state(dev, ret);
 	tp_put(tp);
-	bio_free_clone(bio);
+	bio_free_clone(bio, dev);
 }
 
 #ifdef HAVE_BIO_ENDIO_INT
@@ -3149,7 +3207,7 @@ static void on_bio_read_complete(struct bio *bio){
 }
 #endif
 
-static int snap_trace_bio(struct snap_device *dev, struct bio *bio){
+static int snap_process_bio(struct snap_device *dev, struct bio *bio){
 	int ret;
 	struct bio *new_bio = NULL;
 	struct tracing_params *tp = NULL;
@@ -3157,7 +3215,12 @@ static int snap_trace_bio(struct snap_device *dev, struct bio *bio){
 	unsigned int bytes, pages;
 
 	//if we don't need to cow this bio just call the real mrf normally
-	if(!bio_needs_cow(bio, dev->sd_cow_inode)) return elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
+	if(!bio_needs_cow(bio, dev->sd_cow_inode)) {
+		LOG_DEBUG("snap_process_bio - skip - %llu (%llu) - orig bio %p (%d)",
+			atomic64_read(&dev->sd_submitted_cnt), atomic64_read(&dev->sd_received_cnt), bio,
+			bio_data_dir(bio));
+		return elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
+	}
 
 	//the cow manager works in 4096 byte blocks, so read clones must also be 4096 byte aligned
 	start_sect = ROUND_DOWN(bio_sector(bio) - dev->sd_sect_off, SECTORS_PER_BLOCK) + dev->sd_sect_off;
@@ -3170,9 +3233,13 @@ static int snap_trace_bio(struct snap_device *dev, struct bio *bio){
 
 retry:
 	//allocate and populate read bio clone. This bio may not have all the pages we need due to queue restrictions
-	ret = bio_make_read_clone(dev_bioset(dev), tp, bio, start_sect, pages, &new_bio, &bytes);
+	ret = bio_make_read_clone(dev, tp, bio, start_sect, pages, &new_bio, &bytes);
 	if(ret) goto error;
-
+	
+	LOG_DEBUG("snap_process_bio - alloc %llu - %llu (%llu) - orig_bio %p, bio %p",
+		atomic64_read(&dev->sd_alloc_bio_cnt),
+		atomic64_read(&dev->sd_submitted_cnt), atomic64_read(&dev->sd_received_cnt), bio, new_bio);
+	
 	//set pointers for read clone
 	ret = tp_add(tp, new_bio);
 	if (ret) goto error;
@@ -3211,11 +3278,27 @@ error:
 	tracer_set_fail_state(dev, ret);
 
 	//clean up the bio we allocated (but did not submit)
-	if(new_bio) bio_free_clone(new_bio);
+	if(new_bio) bio_free_clone(new_bio, dev);
 	if(tp) tp_put(tp);
 
 	//this function only returns non-zero if the real mrf does not. Errors set the fail state.
 	return 0;
+}
+
+static int snap_trace_bio(struct snap_device *dev, struct bio *bio){
+	//if we don't need to cow this bio just call the real mrf normally
+	if (!bio_needs_cow(bio, dev->sd_cow_inode)) {
+		LOG_DEBUG("snap_trace_bio - skip - %llu (%llu) - orig bio %p (%d)",
+			atomic64_read(&dev->sd_submitted_cnt), atomic64_read(&dev->sd_received_cnt), bio,
+			bio_data_dir(bio));
+        return elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
+    }
+    
+    atomic64_inc(&dev->sd_orig_bio_in_queue_cnt);
+    
+    bio_queue_add(&dev->sd_buf_bios, bio);
+    
+    return 0;
 }
 
 static int inc_make_sset(struct snap_device *dev, sector_t sect, unsigned int len){
@@ -3530,6 +3613,7 @@ static void __tracer_init(struct snap_device *dev){
 	atomic_set(&dev->sd_fail_code, 0);
 	bio_queue_init(&dev->sd_cow_bios);
 	bio_queue_init(&dev->sd_orig_bios);
+	bio_queue_init(&dev->sd_buf_bios);
 	sset_queue_init(&dev->sd_pending_ssets);
 }
 
@@ -3928,8 +4012,19 @@ static int __tracer_setup_snap(struct snap_device *dev, unsigned int minor, stru
 		goto error;
 	}
 
+	LOG_DEBUG("starting buffer kernel thread");
+	dev->sd_buf_thread = kthread_run(snap_buf_thread, dev, SNAP_BUF_THREAD_NAME_FMT, minor);
+	if(IS_ERR(dev->sd_buf_thread)){
+		ret = PTR_ERR(dev->sd_buf_thread);
+		dev->sd_buf_thread = NULL;
+		LOG_ERROR(ret, "error starting buffer kernel thread");
+		goto error;
+	}
+
 	atomic64_set(&dev->sd_submitted_cnt, 0);
 	atomic64_set(&dev->sd_received_cnt, 0);
+    atomic64_set(&dev->sd_orig_bio_in_queue_cnt, 0);
+	atomic64_set(&dev->sd_alloc_bio_cnt, 0);
 
 	return 0;
 
@@ -3940,6 +4035,12 @@ error:
 }
 
 static void __tracer_destroy_cow_thread(struct snap_device *dev){
+	if(dev->sd_buf_thread){
+		LOG_DEBUG("stopping buffer thread");
+		kthread_stop(dev->sd_buf_thread);
+		dev->sd_buf_thread = NULL;
+	}
+
 	if(dev->sd_cow_thread){
 		LOG_DEBUG("stopping cow thread");
 		kthread_stop(dev->sd_cow_thread);
