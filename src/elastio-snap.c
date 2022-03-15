@@ -3157,7 +3157,7 @@ static int memory_is_too_low(struct snap_device *dev) {
 	si_meminfo(&si);
 	ret = ((si.freeram * 100) / si.totalram) < LOW_MEMORY_FAIL_PERCENT ? -ENOMEM : 0;
 	if (ret) {
-		LOG_ERROR(ret, "memory is too low");
+		LOG_ERROR(ret, "physical memory usage has exceeded %d%% threshold. entering error state", (100 - LOW_MEMORY_FAIL_PERCENT));
 		tracer_set_fail_state(dev, ret);
 	}
 	return ret;
