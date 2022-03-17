@@ -841,7 +841,7 @@ static inline void elastio_snap_bio_copy_dev(struct bio *dst, struct bio *src){
 #define ACTIVE 1
 #define UNVERIFIED 2
 
-#define LOW_MEMORY_FAIL_PERCENT 10
+#define LOW_MEMORY_FAIL_PERCENT 20
 
 //macros for working with bios
 #define BIO_SET_SIZE 256
@@ -3154,8 +3154,13 @@ static void on_bio_read_complete(struct bio *bio){
 static int memory_is_too_low(struct snap_device *dev) {
 	int ret;
 	struct sysinfo si;
-	si_meminfo(&si);
-	ret = ((si.freeram * 100) / si.totalram) < LOW_MEMORY_FAIL_PERCENT ? -ENOMEM : 0;
+	static __kernel_ulong_t totalram = 0;
+	if (totalram == 0) {
+		si_meminfo(&si);
+		totalram = si.totalram;
+	}
+
+	ret = ((si_mem_available() * 100) / totalram) < LOW_MEMORY_FAIL_PERCENT ? -ENOMEM : 0;
 	if (ret) {
 		LOG_ERROR(ret, "physical memory usage has exceeded %d%% threshold. entering error state", (100 - LOW_MEMORY_FAIL_PERCENT));
 		tracer_set_fail_state(dev, ret);
