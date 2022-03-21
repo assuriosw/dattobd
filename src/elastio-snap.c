@@ -840,6 +840,7 @@ static inline void elastio_snap_bio_copy_dev(struct bio *dst, struct bio *src){
 #define SNAPSHOT 0
 #define ACTIVE 1
 #define UNVERIFIED 2
+#define COW_ON_BDEV 3
 
 #define LOW_MEMORY_FAIL_PERCENT 20
 
@@ -2627,9 +2628,13 @@ static inline struct inode *page_get_inode(struct page *pg){
 	return pg->mapping->host;
 }
 
-static int bio_needs_cow(struct bio *bio, struct inode *inode){
+static int bio_needs_cow(struct bio *bio, struct snap_device *dev){
 	bio_iter_t iter;
 	bio_iter_bvec_t bvec;
+
+	if (!test_bit(COW_ON_BDEV, &dev->sd_state)) {
+		return 0;
+	}
 
 #ifdef HAVE_ENUM_REQ_OPF
 //#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
@@ -2638,7 +2643,7 @@ static int bio_needs_cow(struct bio *bio, struct inode *inode){
 
 	//check the inode of each page return true if it does not match our cow file
 	bio_for_each_segment(bvec, bio, iter){
-		if(page_get_inode(bio_iter_page(bio, iter)) != inode) return 1;
+		if(page_get_inode(bio_iter_page(bio, iter)) != dev->sd_cow_inode) return 1;
 	}
 
 	return 0;
@@ -3736,11 +3741,9 @@ static int __tracer_setup_cow(struct snap_device *dev, struct block_device *bdev
 		}
 	}
 
-	//verify that file is on block device
-	if(!file_is_on_bdev(dev->sd_cow->filp, bdev)){
-		ret = -EINVAL;
-		LOG_ERROR(ret, "'%s' is not on '%s'", cow_path, bdev_name);
-		goto error;
+	//set state flag that file is on block device
+	if (file_is_on_bdev(dev->sd_cow->filp, bdev)) {
+		set_bit(COW_ON_BDEV, &dev->sd_state);
 	}
 
 	//find the cow file's inode number
