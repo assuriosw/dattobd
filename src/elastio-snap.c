@@ -3181,7 +3181,7 @@ static int snap_trace_bio(struct snap_device *dev, struct bio *bio){
 	unsigned int bytes, pages;
 
 	//if we don't need to cow this bio just call the real mrf normally
-	if (!bio_needs_cow(bio, dev->sd_cow_inode) || memory_is_too_low(dev)) {
+	if (!bio_needs_cow(bio, dev) || memory_is_too_low(dev)) {
 		return elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
 	}
 
