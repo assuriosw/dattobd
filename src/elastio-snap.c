@@ -840,7 +840,9 @@ static inline void elastio_snap_bio_copy_dev(struct bio *dst, struct bio *src){
 #define SNAPSHOT 0
 #define ACTIVE 1
 #define UNVERIFIED 2
-#define COW_ON_BDEV 3
+
+//macro for defining the cow state, whether it placed on bdev or not
+#define COW_ON_BDEV 1
 
 #define LOW_MEMORY_FAIL_PERCENT 20
 
@@ -968,6 +970,7 @@ struct cow_manager{
 struct snap_device{
 	unsigned int sd_minor; //minor number of the snapshot
 	unsigned long sd_state; //current state of the snapshot
+	unsigned long sd_cow_state; //current state of cow file
 	unsigned long sd_falloc_size; //space allocated to the cow file (in megabytes)
 	unsigned long sd_cache_size; //maximum cache size (in bytes)
 	atomic_t sd_refs; //number of users who have this device open
@@ -2632,7 +2635,7 @@ static int bio_needs_cow(struct bio *bio, struct snap_device *dev){
 	bio_iter_t iter;
 	bio_iter_bvec_t bvec;
 
-	if (!test_bit(COW_ON_BDEV, &dev->sd_state)) {
+	if (!test_bit(COW_ON_BDEV, &dev->sd_cow_state)) {
 		return 0;
 	}
 
@@ -3743,12 +3746,11 @@ static int __tracer_setup_cow(struct snap_device *dev, struct block_device *bdev
 
 	//set state flag that file is on block device
 	if (file_is_on_bdev(dev->sd_cow->filp, bdev)) {
-		set_bit(COW_ON_BDEV, &dev->sd_state);
+		set_bit(COW_ON_BDEV, &dev->sd_cow_state);
+		//find the cow file's inode number
+		LOG_DEBUG("finding cow file inode");
+		dev->sd_cow_inode = elastio_snap_get_dentry(dev->sd_cow->filp)->d_inode;
 	}
-
-	//find the cow file's inode number
-	LOG_DEBUG("finding cow file inode");
-	dev->sd_cow_inode = elastio_snap_get_dentry(dev->sd_cow->filp)->d_inode;
 
 	return 0;
 
