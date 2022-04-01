@@ -570,19 +570,8 @@ static inline make_request_fn* elastio_snap_get_bd_mrf(struct block_device *bdev
 static inline void elastio_snap_set_bd_mrf(struct block_device *bdev, make_request_fn *mrf){
 	bdev->bd_disk->queue->make_request_fn = mrf;
 }
+
 #else
-/*
-static inline void elastio_snap_set_bd_mrf(struct block_device *bdev, make_request_fn *mrf){
-	unsigned long cr0;
-
-	preempt_disable();
-	cr0 = disable_page_protection();
-	((struct block_device_operations *)bdev->bd_disk->fops)->submit_bio = mrf;
-	reenable_page_protection(cr0);
-	preempt_enable();
-}
-*/
-
 static inline struct block_device_operations* elastio_snap_get_bd_ops(struct block_device *bdev){
 	return (struct block_device_operations*)bdev->bd_disk->fops;
 }
@@ -663,16 +652,9 @@ static inline MRF_RETURN_TYPE elastio_snap_null_mrf(struct bio *bio){
 	return elastio_blk_mq_submit_bio(bio);
 }
 
-
 static inline int elastio_snap_call_mrf(make_request_fn *fn, struct bio *bio){
 	return fn(bio);
 }
-
-/*
-static inline int elastio_snap_call_mrf(struct block_device_operations *ops, struct bio *bio){
-	return ops->submit_bio(bio);
-}
-*/
 #endif
 
 #ifndef ACCESS_ONCE
@@ -2977,11 +2959,7 @@ static int snap_mrf_thread(void *data){
 		//submit the original bio to the block IO layer
 		elastio_snap_bio_op_set_flag(bio, ELASTIO_SNAP_PASSTHROUGH);
 
-//#ifdef USE_BDOPS_SUBMIT_BIO
-//		ret = elastio_snap_call_mrf(dev->sd_orig_ops, bio);
-//#else
 		ret = elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
-//#endif
 #ifdef HAVE_MAKE_REQUEST_FN_INT
 		if(ret) generic_make_request(bio);
 #endif
@@ -3210,11 +3188,7 @@ static int snap_trace_bio(struct snap_device *dev, struct bio *bio){
 
 	//if we don't need to cow this bio just call the real mrf normally
 	if (!bio_needs_cow(bio, dev) || memory_is_too_low(dev)) {
-#ifdef USE_BDOPS_SUBMIT_BIO
-		return elastio_snap_call_mrf(dev->sd_orig_ops, bio);
-#else
 		return elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
-#endif
 	}
 
 	//the cow manager works in 4096 byte blocks, so read clones must also be 4096 byte aligned
@@ -3338,27 +3312,19 @@ out:
 	}
 
 	//call the original mrf
-//#ifdef USE_BDOPS_SUBMIT_BIO
-//	ret = elastio_snap_call_mrf(dev->sd_orig_ops, bio);
-//#else
 	ret = elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
-//#endif
 
 	return ret;
 }
 
 #ifdef USE_BDOPS_SUBMIT_BIO
 // Linux version 5.9+
-//static asmlinkage MRF_RETURN_TYPE tracing_mrf(struct bio *bio){
 static MRF_RETURN_TYPE tracing_mrf(struct bio *bio){
 #else
 static MRF_RETURN_TYPE tracing_mrf(struct request_queue *q, struct bio *bio){
 #endif
 	int i, ret = 0;
 	struct snap_device *dev;
-//#ifdef USE_BDOPS_SUBMIT_BIO
-//	struct block_device_operations *orig_ops = NULL;
-//#endif
 	make_request_fn *orig_mrf = NULL;
 
 	MAYBE_UNUSED(ret);
@@ -3367,9 +3333,6 @@ static MRF_RETURN_TYPE tracing_mrf(struct request_queue *q, struct bio *bio){
 	tracer_for_each(dev, i){	// for each snap device
 		if(!dev || test_bit(UNVERIFIED, &dev->sd_state) || !tracer_queue_matches_bio(dev, bio)) continue;
 
-//#ifdef USE_BDOPS_SUBMIT_BIO
-//		orig_ops = dev->sd_orig_ops;
-//#endif
 		orig_mrf = dev->sd_orig_mrf;
 		if(elastio_snap_bio_op_flagged(bio, ELASTIO_SNAP_PASSTHROUGH)){
 			elastio_snap_bio_op_clear_flag(bio, ELASTIO_SNAP_PASSTHROUGH);
@@ -3384,14 +3347,6 @@ static MRF_RETURN_TYPE tracing_mrf(struct request_queue *q, struct bio *bio){
 	}
 
 call_orig:
-/*
-+#ifdef USE_BDOPS_SUBMIT_BIO
-+       // Linux version 5.9+
-+       if(orig_mrf) ret = elastio_snap_call_mrf(orig_mrf, bio);
-+#else
-+       if(orig_mrf) ret = __elastio_snap_call_mrf(orig_mrf, q, bio);
-+#endif
-*/
 
 #ifdef USE_BDOPS_SUBMIT_BIO
 	// Linux version 5.9+
@@ -4117,11 +4072,7 @@ static void minor_range_include(unsigned int minor){
 }
 
 static void __tracer_destroy_tracing(struct snap_device *dev){
-//#ifdef USE_BDOPS_SUBMIT_BIO
-//	if(dev->sd_orig_ops){
-//#else
 	if(dev->sd_orig_mrf){
-//#endif
 		LOG_DEBUG("replacing make_request_fn if needed");
 #ifdef USE_BDOPS_SUBMIT_BIO
 		if(__tracer_should_reset_mrf(dev)) __tracer_transition_tracing(NULL, dev->sd_base_dev, dev->sd_orig_ops, &snap_devices[dev->sd_minor]);
@@ -4150,9 +4101,9 @@ static void __tracer_setup_tracing_unverified(struct snap_device *dev, unsigned 
 #ifdef USE_BDOPS_SUBMIT_BIO
 	dev->sd_orig_ops = NULL;
 	if (dev->sd_tracing_ops) kfree(dev->sd_tracing_ops);
-#else
-	dev->sd_orig_mrf = NULL;
 #endif
+	dev->sd_orig_mrf = NULL;
+
 	minor_range_include(minor);
 	smp_wmb();
 	dev->sd_minor = minor;
@@ -4186,7 +4137,8 @@ static int __tracer_setup_tracing(struct snap_device *dev, unsigned int minor){
 			LOG_ERROR(ret, "error allocating tracing ops");
 			goto error;
 		}
-		// FIXME: struct members maybe need another copying
+
+		// fill tracing_ops with the tracing_mrf as submit_bio and with the minimal set of functions like open and release
 		dev->sd_tracing_ops->owner = THIS_MODULE;
 		dev->sd_tracing_ops->open = elastio_snap_get_bd_ops(dev->sd_base_dev)->open;
 		dev->sd_tracing_ops->release = elastio_snap_get_bd_ops(dev->sd_base_dev)->release;
