@@ -79,6 +79,9 @@ class TestSetup(DeviceTestCase):
     def test_setup_2_volumes(self):
         # Setup device #1 at the root volume
         minor = randint(0, 23)
+        while minor == self.minor:
+          minor = randint(0, 23)
+
         cmd = ["findmnt", "/", "-n", "-o", "SOURCE"]
         device = subprocess.check_output(cmd, timeout=10, shell=False).rstrip().decode("utf-8")
         snap_device = "/dev/elastio-snap{}".format(minor)

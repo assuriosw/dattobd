@@ -559,9 +559,6 @@ static int elastio_snap_should_remove_suid(struct dentry *dentry)
 	typedef blk_qc_t (make_request_fn) (struct bio *bio);
 #endif
 
-static inline unsigned long disable_page_protection(void);
-static inline void reenable_page_protection(unsigned long cr0);
-
 #ifndef USE_BDOPS_SUBMIT_BIO
 static inline make_request_fn* elastio_snap_get_bd_mrf(struct block_device *bdev){
 	return bdev->bd_disk->queue->make_request_fn;
@@ -3370,8 +3367,6 @@ out:
 	MRF_RETURN(ret);
 }
 
-
-
 #ifndef USE_BDOPS_SUBMIT_BIO
 // Linux version < 5.9
 static MRF_RETURN_TYPE snap_mrf(struct request_queue *q, struct bio *bio){
@@ -3579,7 +3574,7 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 		if(new_mrf) elastio_snap_set_bd_mrf(bdev, new_mrf == elastio_snap_null_mrf ? NULL : new_mrf);
 #elif defined USE_BDOPS_SUBMIT_BIO
 // Linux version 5.9+
-		if(new_ops) elastio_snap_set_bd_ops(bdev, new_ops->submit_bio == elastio_snap_null_mrf ? NULL : new_ops);
+		if(new_ops) elastio_snap_set_bd_ops(bdev, new_ops);
 #else
 // Linux version older than 5.8
 		if(new_mrf) elastio_snap_set_bd_mrf(bdev, new_mrf);
@@ -4071,6 +4066,17 @@ static void minor_range_include(unsigned int minor){
 	if(minor > highest_minor) highest_minor = minor;
 }
 
+static inline void free_mrf_and_ops(struct snap_device *dev){
+	dev->sd_orig_mrf = NULL;
+#ifdef USE_BDOPS_SUBMIT_BIO
+	dev->sd_orig_ops = NULL;
+	if (dev->sd_tracing_ops) {
+		kfree(dev->sd_tracing_ops);
+		dev->sd_tracing_ops = NULL;
+	}
+#endif
+}
+
 static void __tracer_destroy_tracing(struct snap_device *dev){
 	if(dev->sd_orig_mrf){
 		LOG_DEBUG("replacing make_request_fn if needed");
@@ -4081,12 +4087,9 @@ static void __tracer_destroy_tracing(struct snap_device *dev){
 #endif
 		else __tracer_transition_tracing(NULL, dev->sd_base_dev, NULL, &snap_devices[dev->sd_minor]);
 
-#ifdef USE_BDOPS_SUBMIT_BIO
-		dev->sd_orig_ops = NULL;
-		if (dev->sd_tracing_ops) kfree(dev->sd_tracing_ops);
-#else
-		dev->sd_orig_mrf = NULL;
-#endif
+		smp_wmb();
+		free_mrf_and_ops(dev);
+
 	}else if(snap_devices[dev->sd_minor] == dev){
 		smp_wmb();
 		snap_devices[dev->sd_minor] = NULL;
@@ -4098,11 +4101,7 @@ static void __tracer_destroy_tracing(struct snap_device *dev){
 }
 
 static void __tracer_setup_tracing_unverified(struct snap_device *dev, unsigned int minor){
-#ifdef USE_BDOPS_SUBMIT_BIO
-	dev->sd_orig_ops = NULL;
-	if (dev->sd_tracing_ops) kfree(dev->sd_tracing_ops);
-#endif
-	dev->sd_orig_mrf = NULL;
+	free_mrf_and_ops(dev);
 
 	minor_range_include(minor);
 	smp_wmb();
@@ -4138,10 +4137,10 @@ static int __tracer_setup_tracing(struct snap_device *dev, unsigned int minor){
 			goto error;
 		}
 
-		// fill tracing_ops with the tracing_mrf as submit_bio and with the minimal set of functions like open and release
+		memcpy(dev->sd_tracing_ops, elastio_snap_get_bd_ops(dev->sd_base_dev), sizeof(struct block_device_operations));
+
+		// set tracing_mrf as submit_bio and owner. all other content is already there copied from the original structure
 		dev->sd_tracing_ops->owner = THIS_MODULE;
-		dev->sd_tracing_ops->open = elastio_snap_get_bd_ops(dev->sd_base_dev)->open;
-		dev->sd_tracing_ops->release = elastio_snap_get_bd_ops(dev->sd_base_dev)->release;
 		dev->sd_tracing_ops->submit_bio = tracing_mrf;
 	}
 
@@ -4155,11 +4154,7 @@ static int __tracer_setup_tracing(struct snap_device *dev, unsigned int minor){
 error:
 	LOG_ERROR(ret, "error setting up tracing");
 	dev->sd_minor = 0;
-#ifdef USE_BDOPS_SUBMIT_BIO
-	dev->sd_orig_ops = NULL;
-	if (dev->sd_tracing_ops) kfree(dev->sd_tracing_ops);
-#endif
-	dev->sd_orig_mrf = NULL;
+	free_mrf_and_ops(dev);
 	minor_range_recalculate();
 	return ret;
 }
@@ -4696,9 +4691,9 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 
 		ret = ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size);
 		if(ret) break;
-        
+
 		elastio_snap_wait_for_release(snap_devices[minor]);
-        
+
 		break;
 	case IOCTL_RELOAD_SNAP:
 		//get params from user space
@@ -5304,7 +5299,7 @@ static inline void wp_cr0(unsigned long cr0) {
 #endif
 }
 
-static inline unsigned long disable_page_protection() {
+static inline unsigned long disable_page_protection(void) {
 	unsigned long cr0;
 	cr0 = read_cr0();
 	wp_cr0(cr0 & ~X86_CR0_WP);
