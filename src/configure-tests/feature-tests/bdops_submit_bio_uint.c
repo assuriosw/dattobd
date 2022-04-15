@@ -9,9 +9,9 @@
 #include "includes.h"
 MODULE_LICENSE("GPL");
 
-static void snap_submit_bio(struct bio *bio)
+static blk_qc_t snap_submit_bio(struct bio *bio)
 {
-	(void)bio;
+	return BLK_QC_T_NONE;
 }
 
 static inline void dummy(void){
