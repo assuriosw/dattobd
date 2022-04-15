@@ -672,6 +672,8 @@ static inline MRF_RETURN_TYPE elastio_snap_null_mrf(struct request_queue *q, str
 // Also elastio_blk_mq_submit_bio is set to NULL in case if address of the blk_mq_submit_bio function is not detected for further checks.
 MRF_RETURN_TYPE (*elastio_blk_mq_submit_bio)(struct bio *) = (BLK_MQ_SUBMIT_BIO_ADDR != 0) ?
 	(MRF_RETURN_TYPE (*)(struct bio *)) (BLK_MQ_SUBMIT_BIO_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
+#else
+MRF_RETURN_TYPE (*elastio_blk_mq_submit_bio)(struct bio *) = blk_mq_submit_bio;
 #endif
 
 static inline MRF_RETURN_TYPE elastio_snap_null_mrf(struct bio *bio){
@@ -4032,11 +4034,15 @@ static int __tracer_setup_snap(struct snap_device *dev, unsigned int minor, stru
 
 	//register gendisk with the kernel
 	LOG_DEBUG("adding disk");
+	#ifdef HAVE_ADD_DISK_INT
 	ret = add_disk(dev->sd_gd);
 	if(ret){
 		LOG_ERROR(ret, "error adding disk");
 		goto error;
 	}
+	#else
+	add_disk(dev->sd_gd);
+	#endif
 
 	LOG_DEBUG("starting mrf kernel thread");
 	dev->sd_mrf_thread = kthread_run(snap_mrf_thread, dev, SNAP_MRF_THREAD_NAME_FMT, minor);
