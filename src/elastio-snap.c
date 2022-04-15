@@ -665,16 +665,12 @@ static inline MRF_RETURN_TYPE elastio_snap_null_mrf(struct request_queue *q, str
 #ifdef USE_BDOPS_SUBMIT_BIO
 // Linux version 5.9+
 
-#ifndef HAVE_BLK_MQ_SUBMIT_BIO
 // The blk_mq_submit_bio function was exported in the kernels 5.9.0 - 5.9.1. And starting from the 5.9.2 it doesn't.
 // And compat HAVE_BLK_MQ_SUBMIT_BIO doesn't allow us to detect whether it exported or not.
 // Anyway this call by address works in all cases for the kernels 5.9+.
 // Also elastio_blk_mq_submit_bio is set to NULL in case if address of the blk_mq_submit_bio function is not detected for further checks.
 MRF_RETURN_TYPE (*elastio_blk_mq_submit_bio)(struct bio *) = (BLK_MQ_SUBMIT_BIO_ADDR != 0) ?
 	(MRF_RETURN_TYPE (*)(struct bio *)) (BLK_MQ_SUBMIT_BIO_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
-#else
-MRF_RETURN_TYPE (*elastio_blk_mq_submit_bio)(struct bio *) = blk_mq_submit_bio;
-#endif
 
 static inline MRF_RETURN_TYPE elastio_snap_null_mrf(struct bio *bio){
 	#ifndef MRF_RETURN_TYPE_VOID
