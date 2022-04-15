@@ -624,15 +624,15 @@ static inline int elastio_snap_call_mrf(make_request_fn *fn, struct bio *bio){
 	return 0;
 }
 #else
-	#ifdef HAVE_BDOPS_SUBMIT_BIO_UINT
-		// Linux kernel version 5.9 - 5.15
-		#define MRF_RETURN_TYPE blk_qc_t
-		#define MRF_RETURN(ret) return BLK_QC_T_NONE
-	#else
+	#ifdef HAVE_BDOPS_SUBMIT_BIO
 		// Linux kernel version 5.16+
 		#define MRF_RETURN_TYPE void
 		#define MRF_RETURN(ret) return
 		#define MRF_RETURN_TYPE_VOID
+	#else
+		// Linux kernel version 5.9 - 5.15
+		#define MRF_RETURN_TYPE blk_qc_t
+		#define MRF_RETURN(ret) return BLK_QC_T_NONE
 	#endif
 
 #ifndef USE_BDOPS_SUBMIT_BIO
