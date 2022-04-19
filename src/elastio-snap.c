@@ -570,9 +570,6 @@ static int elastio_snap_should_remove_suid(struct dentry *dentry)
 	typedef void (make_request_fn) (struct bio *bio);
 #endif
 
-static inline unsigned long disable_page_protection(void);
-static inline void reenable_page_protection(unsigned long cr0);
-
 #ifndef USE_BDOPS_SUBMIT_BIO
 static inline make_request_fn* elastio_snap_get_bd_mrf(struct block_device *bdev){
 	return bdev->bd_disk->queue->make_request_fn;
@@ -613,6 +610,7 @@ static inline int elastio_snap_call_mrf(make_request_fn *fn, struct bio *bio){
 #elif defined HAVE_MAKE_REQUEST_FN_VOID
 	#define MRF_RETURN_TYPE void
 	#define MRF_RETURN(ret) return
+	#define MRF_RETURN_TYPE_VOID
 
 static inline int __elastio_snap_call_mrf(make_request_fn *fn, struct request_queue *q, struct bio *bio){
 	fn(q, bio);
@@ -645,14 +643,6 @@ static inline int elastio_snap_call_mrf(make_request_fn *fn, struct bio *bio){
 }
 #endif
 
-#ifdef MRF_RETURN_TYPE_VOID
-	#define MRF_SET_RETURN_VALUE(mrf_func) mrf_func
-	#define MRF_RETURN_VALUE(mrf_func) mrf_func
-#else
-	#define MRF_SET_RETURN_VALUE(mrf_func) ret = mrf_func
-	#define MRF_RETURN_VALUE(mrf_func) return mrf_func
-#endif
-
 #ifdef HAVE_BLK_MQ_MAKE_REQUEST
 // Linux version 5.8
 static inline MRF_RETURN_TYPE elastio_snap_null_mrf(struct request_queue *q, struct bio *bio){
@@ -660,6 +650,14 @@ static inline MRF_RETURN_TYPE elastio_snap_null_mrf(struct request_queue *q, str
 	return blk_mq_make_request(q, bio);
 }
 #endif
+#endif
+
+#ifdef MRF_RETURN_TYPE_VOID
+	#define MRF_SET_RETURN_VALUE(mrf_func) mrf_func
+	#define MRF_RETURN_VALUE(mrf_func) mrf_func
+#else
+	#define MRF_SET_RETURN_VALUE(mrf_func) ret = mrf_func
+	#define MRF_RETURN_VALUE(mrf_func) return mrf_func
 #endif
 
 #ifdef USE_BDOPS_SUBMIT_BIO
@@ -3951,8 +3949,7 @@ static int __tracer_setup_snap(struct snap_device *dev, unsigned int minor, stru
 	LOG_DEBUG("allocating queue and setting up make request function");
 	dev->sd_queue = blk_alloc_queue(snap_mrf, NUMA_NO_NODE);
 #else
-	//dev->sd_queue = elastio_blk_alloc_queue(GFP_KERNEL);
-	dev->sd_queue = elastio_blk_alloc_queue(NUMA_NO_NODE);
+	dev->sd_queue = elastio_blk_alloc_queue(GFP_KERNEL);
 #endif
 
 	if(!dev->sd_queue){
