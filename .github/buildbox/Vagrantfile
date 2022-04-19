@@ -51,6 +51,7 @@ Vagrant.configure("2") do |config|
     config.vm.define "#{instance}", autostart: false do |b|
       b.vm.box = "#{box}"
       b.vm.box_url = [ "https://s3.eu-central-1.wasabisys.com/blobs-wasabi.elastio.dev/devboxes/master/#{box}.json" ]
+	  b.vm.box_version = $box_version
     end
 
     config.trigger.before :"Vagrant::Action::Builtin::BoxAdd", type: :action do |trigger|
