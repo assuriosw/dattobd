@@ -561,9 +561,8 @@ static int elastio_snap_should_remove_suid(struct dentry *dentry)
 
 #if !defined HAVE_MAKE_REQUEST_FN_IN_QUEUE && defined HAVE_BDOPS_SUBMIT_BIO
 	// Linux kernel version 5.16+
-	// make_request_fn has been moved from the request queue structure to the
-	// block_device_operations as submit_bio function with VOID return type.
-	// See https://github.com/torvalds/linux/commit/c62b37d96b6eb3ec5ae4cbe00db107bf15aebc93
+	// submit_bio function in the block_device_operations structure has changed its return type to VOID.
+	// See https://github.com/torvalds/linux/commit/3e08773c3841e9db7a520908cc2b136a77d275ff#diff79b436371fdb3ddf0e7ad9bd4c9afe05160f7953438e650a77519b882904c56bR1181	
 	#define USE_BDOPS_SUBMIT_BIO
 
 	// Prototype bdev->fops->submit_bio but with the name already used in the code
@@ -671,9 +670,9 @@ MRF_RETURN_TYPE (*elastio_blk_mq_submit_bio)(struct bio *) = (BLK_MQ_SUBMIT_BIO_
 	(MRF_RETURN_TYPE (*)(struct bio *)) (BLK_MQ_SUBMIT_BIO_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
 
 static inline MRF_RETURN_TYPE elastio_snap_null_mrf(struct bio *bio){
-	#ifndef MRF_RETURN_TYPE_VOID
+#ifndef MRF_RETURN_TYPE_VOID
 	percpu_ref_get(&elastio_snap_bio_bi_disk(bio)->queue->q_usage_counter);
-	#endif
+#endif
 	MRF_RETURN_VALUE(elastio_blk_mq_submit_bio(bio));
 }
 
@@ -3907,7 +3906,7 @@ static void __tracer_destroy_snap(struct snap_device *dev){
 		if(dev->sd_gd->flags & GENHD_FL_UP) del_gendisk(dev->sd_gd);
 #endif
 		if(dev->sd_queue){
-			LOG_DEBUG("freeing request queue - a");
+			LOG_DEBUG("freeing request queue");
 			blk_cleanup_queue(dev->sd_queue);
 			dev->sd_queue = NULL;
 		}
@@ -4027,15 +4026,15 @@ static int __tracer_setup_snap(struct snap_device *dev, unsigned int minor, stru
 
 	//register gendisk with the kernel
 	LOG_DEBUG("adding disk");
-	#ifdef HAVE_ADD_DISK_INT
+#ifdef HAVE_ADD_DISK_INT
 	ret = add_disk(dev->sd_gd);
 	if(ret){
 		LOG_ERROR(ret, "error adding disk");
 		goto error;
 	}
-	#else
+#else
 	add_disk(dev->sd_gd);
-	#endif
+#endif
 
 	LOG_DEBUG("starting mrf kernel thread");
 	dev->sd_mrf_thread = kthread_run(snap_mrf_thread, dev, SNAP_MRF_THREAD_NAME_FMT, minor);
