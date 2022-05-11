@@ -4,7 +4,7 @@
  * Copyright (C) 2020 Elastio Software Inc.
  */
 
-// 5.9 <= kernel_version
+// kernel_version >= 5.16
 
 #include "includes.h"
 MODULE_LICENSE("GPL");
