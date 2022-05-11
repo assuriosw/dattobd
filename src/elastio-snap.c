@@ -4030,6 +4030,11 @@ static int __tracer_setup_snap(struct snap_device *dev, unsigned int minor, stru
 	dev->sd_gd->flags |= GENHD_FL_NO_PART_SCAN;
 #endif
 
+#ifdef HAVE_GENHD_FL_NO_PART
+	// the flag has been renamed in 5.17
+	dev->sd_gd->flags |= GENHD_FL_NO_PART;
+#endif
+
 	//set the device as read-only
 	set_disk_ro(dev->sd_gd, 1);
 
