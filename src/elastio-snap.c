@@ -1144,8 +1144,22 @@ static void **system_call_table = NULL;
 static struct lock_class_key sd_bio_compl_lkclass;
 #endif
 
+#if !SYS_MOUNT_ADDR
+#if __X64_SYS_MOUNT_ADDR || __ARM64_SYS_MOUNT_ADDR
+#define USE_ARCH_MOUNT_FUNCS
+#else
+#warning "No mount function found"
+#endif
+#endif
+
+#ifdef USE_ARCH_MOUNT_FUNCS
+static asmlinkage long (*orig_mount)(struct pt_regs *regs);
+static asmlinkage long (*orig_umount)(struct pt_regs *regs);
+#else
 static asmlinkage long (*orig_mount)(char __user *, char __user *, char __user *, unsigned long, void __user *);
-static asmlinkage long (*orig_umount)(char __user *, int);
+static asmlinkage long (*orig_umount)(char __user *name, int flags);
+#endif
+
 #ifdef HAVE_SYS_OLDUMOUNT
 static asmlinkage long (*orig_oldumount)(char __user *);
 #endif
@@ -5262,18 +5276,52 @@ static void post_umount_check(int dormant_ret, long umount_ret, unsigned int idx
 	LOG_DEBUG("post umount check succeeded");
 }
 
+#ifdef USE_ARCH_MOUNT_FUNCS
+static int mount_hook_extract_params(struct pt_regs *regs, char **dev_name, char **dir_name, unsigned long *flags)
+{
+	if (!regs || !dev_name ||
+			!dir_name || !flags)
+		return -1;
+
+#if defined(CONFIG_ARM64)
+	*dev_name = (char *) regs->regs[0];
+	*dir_name = (char *) regs->regs[1];
+	*flags = regs->regs[3];
+#elif defined(CONFIG_X86_64)
+	*dev_name = (char *) regs->di;
+	*dir_name = (char *) regs->si;
+	*flags = regs->r10;
+#endif
+	return 0;
+}
+
+static asmlinkage long mount_hook(struct pt_regs *regs){
+#else
 static asmlinkage long mount_hook(char __user *dev_name, char __user *dir_name, char __user *type, unsigned long flags, void __user *data){
+#endif
 	int ret;
 	int ret_dev;
 	int ret_dir;
 	long sys_ret;
 	unsigned int idx;
-	unsigned long real_flags = flags;
 	char *buff_dev_name = NULL;
 	char *buff_dir_name = NULL;
+	unsigned long real_flags;
 
-	//get rid of the magic value if its present
-	if((real_flags & MS_MGC_MSK) == MS_MGC_VAL) real_flags &= ~MS_MGC_MSK;
+#ifdef USE_ARCH_MOUNT_FUNCS
+	unsigned long flags;
+	char *dir_name;
+	char *dev_name;
+
+	ret = mount_hook_extract_params(regs, &dev_name, &dir_name, &flags);
+	if (ret) {
+		// should never happen
+		LOG_ERROR(ret, "couldn't extract mount params");
+		return -EOPNOTSUPP;
+	}
+#endif
+
+	real_flags = flags;
 
 	buff_dev_name = kmalloc(PATH_MAX, GFP_ATOMIC);
 	buff_dir_name = kmalloc(PATH_MAX, GFP_ATOMIC);
@@ -5284,55 +5332,110 @@ static asmlinkage long mount_hook(char __user *dev_name, char __user *dir_name, 
 			kfree(buff_dir_name);
 		return -ENOMEM;
 	}
-	ret_dev=copy_from_user(buff_dev_name,dev_name,PATH_MAX);
-	ret_dir=copy_from_user(buff_dir_name,dir_name,PATH_MAX);
+
+	ret_dev = copy_from_user(buff_dev_name, (char *) dev_name, PATH_MAX);
+	ret_dir = copy_from_user(buff_dir_name, (char *) dir_name, PATH_MAX);
+
 	if(ret_dev || ret_dir)
 		LOG_DEBUG("detected block device Get mount params error!");
 	else
 		LOG_DEBUG("detected block device mount: %s -> %s : 0x%lx", buff_dev_name,
 			buff_dir_name, real_flags);
-	kfree(buff_dev_name);
-	kfree(buff_dir_name);
+
+	//get rid of the magic value if its present
+	if((real_flags & MS_MGC_MSK) == MS_MGC_VAL) real_flags &= ~MS_MGC_MSK;
 
 	if(real_flags & (MS_BIND | MS_SHARED | MS_PRIVATE | MS_SLAVE | MS_UNBINDABLE | MS_MOVE) || ((real_flags & MS_RDONLY) && !(real_flags & MS_REMOUNT))){
 		//bind, shared, move, or new read-only mounts it do not affect the state of the driver
+#ifdef USE_ARCH_MOUNT_FUNCS
+		sys_ret = orig_mount(regs);
+#else
 		sys_ret = orig_mount(dev_name, dir_name, type, flags, data);
+#endif
 	}else if((real_flags & MS_RDONLY) && (real_flags & MS_REMOUNT)){
 		//we are remounting read-only, same as umounting as far as the driver is concerned
-		ret = handle_bdev_mount_nowrite(dir_name, 0, &idx);
+		ret = handle_bdev_mount_nowrite(buff_dir_name, 0, &idx);
+
+#ifdef USE_ARCH_MOUNT_FUNCS
+		sys_ret = orig_mount(regs);
+#else
 		sys_ret = orig_mount(dev_name, dir_name, type, flags, data);
-		post_umount_check(ret, sys_ret, idx, dir_name);
+#endif
+
+		post_umount_check(ret, sys_ret, idx, buff_dir_name);
 	}else{
 		//new read-write mount
+#ifdef USE_ARCH_MOUNT_FUNCS
+		sys_ret = orig_mount(regs);
+#else
 		sys_ret = orig_mount(dev_name, dir_name, type, flags, data);
-		if(!sys_ret) handle_bdev_mounted_writable(dir_name, &idx);
+#endif
+		if(!sys_ret) handle_bdev_mounted_writable(buff_dir_name, &idx);
 	}
+
+	kfree(buff_dev_name);
+	kfree(buff_dir_name);
 
 	LOG_DEBUG("mount returned: %ld", sys_ret);
 
 	return sys_ret;
 }
 
+#ifdef USE_ARCH_MOUNT_FUNCS
+static int umount_hook_extract_params(struct pt_regs *regs, char **dev_name, unsigned long *flags)
+{
+	if (!regs || !dev_name || !flags)
+		return -1;
+
+#if defined(CONFIG_ARM64)
+	*dev_name = (char *) regs->regs[0];
+	*flags = regs->regs[1];
+#elif defined(CONFIG_X86_64)
+	*dev_name = (char *) regs->di;
+	*flags = regs->si;
+#endif
+	return 0;
+}
+
+static asmlinkage long umount_hook(struct pt_regs *regs){
+#else
 static asmlinkage long umount_hook(char __user *name, int flags){
+#endif
 	int ret;
 	long sys_ret;
 	unsigned int idx;
 	char* buff_dev_name = NULL;
 
+#ifdef USE_ARCH_MOUNT_FUNCS
+	unsigned long flags;
+	char *name;
+
+	ret = umount_hook_extract_params(regs, &name, &flags);
+	if (ret) {
+		// should never happen
+		LOG_ERROR(ret, "couldn't extract umount params");
+		return -EOPNOTSUPP;
+	}
+#endif
+
 	buff_dev_name = kmalloc(PATH_MAX, GFP_ATOMIC);
 	if(!buff_dev_name) {
 		return -ENOMEM;
 	}
-	ret=copy_from_user(buff_dev_name, name, PATH_MAX);
+	ret = copy_from_user(buff_dev_name, name, PATH_MAX);
 	if(ret)
-		LOG_DEBUG("detected block device umount error:%d", ret);
+		LOG_DEBUG("detected block device umount error : %d", ret);
 	else
-		LOG_DEBUG("detected block device umount: %s : %d", buff_dev_name, flags);
-	kfree(buff_dev_name);
+		LOG_DEBUG("detected block device umount: %s : %ld", buff_dev_name, flags);
 
-	ret = handle_bdev_mount_nowrite(name, flags, &idx);
+	ret = handle_bdev_mount_nowrite(buff_dev_name, flags, &idx);
+#ifdef USE_ARCH_MOUNT_FUNCS
+	sys_ret = orig_umount(regs);
+#else
 	sys_ret = orig_umount(name, flags);
-	post_umount_check(ret, sys_ret, idx, name);
+#endif
+	post_umount_check(ret, sys_ret, idx, buff_dev_name);
+	kfree(buff_dev_name);
 
 	LOG_DEBUG("umount returned: %ld", sys_ret);
 
@@ -5358,7 +5461,6 @@ static asmlinkage long oldumount_hook(char __user *name){
 	kfree(buff_dev_name);
 
 	ret = handle_bdev_mount_nowrite(name, 0, &idx);
-	sys_ret = orig_oldumount(name);
 	post_umount_check(ret, sys_ret, idx, name);
 
 	LOG_DEBUG("oldumount returned: %ld", sys_ret);
@@ -5367,22 +5469,79 @@ static asmlinkage long oldumount_hook(char __user *name){
 }
 #endif
 
-//#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
+static void **find_sys_call_table(void){
+	long long mount_address = 0;
+	long long umount_address = 0;
+	long long offset = 0;
+	void **sct;
+
+	if(!SYS_CALL_TABLE_ADDR)
+		return NULL;
+
+#ifndef USE_ARCH_MOUNT_FUNCS
+	mount_address = SYS_MOUNT_ADDR;
+	umount_address = SYS_UMOUNT_ADDR;
+#else
+#if __X64_SYS_MOUNT_ADDR
+	mount_address = __X64_SYS_MOUNT_ADDR;
+	umount_address = __X64_SYS_UMOUNT_ADDR;
+#else
+	mount_address = __ARM64_SYS_MOUNT_ADDR;
+	umount_address = __ARM64_SYS_UMOUNT_ADDR;
+#endif
+#endif
+
+	if (!mount_address || !umount_address)
+		return NULL;
+
+	offset = ((void *)kfree) - (void *)KFREE_ADDR;
+	sct = (void **)SYS_CALL_TABLE_ADDR + offset / sizeof(void **);
+
+	if(sct[__NR_mount] != (void **)mount_address + offset / sizeof(void **)) return NULL;
+	if(sct[__NR_umount2] != (void **)umount_address + offset / sizeof(void **)) return NULL;
+#ifdef HAVE_SYS_OLDUMOUNT
+	if(sct[__NR_umount] != (void **)SYS_OLDUMOUNT_ADDR + offset / sizeof(void **)) return NULL;
+#endif
+
+	LOG_DEBUG("system call table located at 0x%p", sct);
+
+	return sct;
+}
+
+#ifdef CONFIG_ARM64
+static int set_page_rw(unsigned long addr)
+{
+	int (*__change_memory_common)(unsigned long, unsigned long,
+			pgprot_t, pgprot_t) = (void *)__CHANGE_MEMORY_COMMON_ADDR;
+
+    vm_unmap_aliases();
+    return __change_memory_common(addr, PAGE_SIZE, __pgprot(PTE_WRITE), __pgprot(PTE_RDONLY));
+}
+
+static int set_page_ro(unsigned long addr)
+{
+	int (*__change_memory_common)(unsigned long, unsigned long,
+			pgprot_t, pgprot_t) = (void *)__CHANGE_MEMORY_COMMON_ADDR;
+
+    vm_unmap_aliases();
+    return __change_memory_common(addr, PAGE_SIZE, __pgprot(PTE_RDONLY), __pgprot(PTE_WRITE));
+}
+#endif
+
+#ifdef CONFIG_X86_64
+
 #ifndef X86_CR0_WP
 #define X86_CR0_WP (1UL << 16)
 #endif
 
 static inline void wp_cr0(unsigned long cr0) {
-#ifdef USE_BDOPS_SUBMIT_BIO
 	// Enabling/disabling approach with usage of the write_cr0 function stopped to work somewhere starting from the kernels 5.X (maybe 5.3)
 	// after this patch https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=8dbec27a242cd3e2816eeb98d3237b9f57cf6232
-	// Hence there is a workaround.
-	// The USE_BDOPS_SUBMIT_BIO have to be replaced with something else if this workaround is necessary for some other 5.X kernels.
-	// Now it's used just for the 5.9+ kernels.
-	__asm__ __volatile__ ("mov %0, %%cr0": "+r" (cr0));
-#else
+	// Hence there is a workaround: if we couldn't reset the WP bit, just do this forcefuly without a native function
 	write_cr0(cr0);
-#endif
+	if (read_cr0() & X86_CR0_WP) {
+		__asm__ __volatile__ ("mov %0, %%cr0": "+r" (cr0));
+	}
 }
 
 static inline unsigned long disable_page_protection(void) {
@@ -5395,53 +5554,70 @@ static inline unsigned long disable_page_protection(void) {
 static inline void reenable_page_protection(unsigned long cr0) {
 	wp_cr0(cr0);
 }
-
-static void **find_sys_call_table(void){
-	long long offset;
-	void **sct;
-
-	if(!SYS_CALL_TABLE_ADDR || !SYS_MOUNT_ADDR || !SYS_UMOUNT_ADDR) return NULL;
-
-	offset = ((void *)kfree) - (void *)KFREE_ADDR;
-	sct = (void **)SYS_CALL_TABLE_ADDR + offset / sizeof(void **);
-
-	if(sct[__NR_mount] != (void **)SYS_MOUNT_ADDR + offset / sizeof(void **)) return NULL;
-	if(sct[__NR_umount2] != (void **)SYS_UMOUNT_ADDR + offset / sizeof(void **)) return NULL;
-#ifdef HAVE_SYS_OLDUMOUNT
-	if(sct[__NR_umount] != (void **)SYS_OLDUMOUNT_ADDR + offset / sizeof(void **)) return NULL;
 #endif
 
-	LOG_DEBUG("system call table located at 0x%p", sct);
-
-	return sct;
+/** generic function to manage system call table page permissions */
+static inline long syscall_mode_rw(void **syscall_table, int syscall_num)
+{
+#if defined(CONFIG_X86_64)
+	return disable_page_protection(); 
+#elif defined(CONFIG_ARM64)
+	return set_page_rw((unsigned long) (syscall_table + syscall_num));
+#else
+	return -1;
+#endif
 }
 
-#define set_syscall(sys_nr, orig_call_save, new_call) 		\
-	orig_call_save = system_call_table[sys_nr];				\
-	system_call_table[sys_nr] = new_call;
+/** generic function to manage system call table page permissions */
+static inline long syscall_mode_ro(void **syscall_table, int syscall_num, unsigned long flags)
+{
+#if defined(CONFIG_X86_64)
+	reenable_page_protection(flags);
+#elif defined(CONFIG_ARM64)
+	return set_page_ro((unsigned long) (syscall_table + syscall_num));
+#else
+	return -1;
+#endif
+	return 0;
+}
 
-#define restore_syscall(sys_nr, orig_call_save) system_call_table[sys_nr] = orig_call_save;
+static inline int syscall_set_hook(void **syscall_table,
+		int syscall_num, void **orig_hook, void *new_hook)
+{
+	long flags;
 
-static void restore_system_call_table(void){
-	unsigned long cr0;
+	flags = syscall_mode_rw(syscall_table, syscall_num);
+	if (flags == -1)
+		return -EOPNOTSUPP;
 
+	if (orig_hook)
+		*orig_hook = syscall_table[syscall_num];
+
+	syscall_table[syscall_num] = new_hook;
+	syscall_mode_ro(syscall_table, syscall_num, flags);
+
+	return 0;
+}
+
+static void restore_system_call_table(void)
+{
 	if(system_call_table){
 		LOG_DEBUG("restoring system call table");
-		//break back into the syscall table and replace the hooks we stole
+
 		preempt_disable();
-		cr0 = disable_page_protection();
-		restore_syscall(__NR_mount, orig_mount);
-		restore_syscall(__NR_umount2, orig_umount);
+		// break back into the syscall table and replace the hooks we stole
+		syscall_set_hook(system_call_table, __NR_mount, NULL, orig_mount);
+		syscall_set_hook(system_call_table, __NR_umount2, NULL, orig_umount);
 #ifdef HAVE_SYS_OLDUMOUNT
-		restore_syscall(__NR_umount, orig_oldumount);
+		syscall_set_hook(system_call_table, __NR_umount, NULL, orig_oldmount);
 #endif
-		reenable_page_protection(cr0);
 		preempt_enable();
 	}
 }
 
-static int hook_system_call_table(void){
-	unsigned long cr0;
+static int hook_system_call_table(void)
+{
+	int ret = 0;
 
 	//find sys_call_table
 	LOG_DEBUG("locating system call table");
@@ -5451,17 +5627,16 @@ static int hook_system_call_table(void){
 		return -ENOENT;
 	}
 
-	//break into the syscall table and steal the hooks we need
 	preempt_disable();
-	cr0 = disable_page_protection();
-	set_syscall(__NR_mount, orig_mount, mount_hook);
-	set_syscall(__NR_umount2, orig_umount, umount_hook);
+	//break into the syscall table and steal the hooks we need
+	ret = syscall_set_hook(system_call_table, __NR_mount, (void **) &orig_mount, mount_hook);
+	ret |= syscall_set_hook(system_call_table, __NR_umount2, (void **) &orig_umount, umount_hook);
 #ifdef HAVE_SYS_OLDUMOUNT
-	set_syscall(__NR_umount, orig_oldumount, oldumount_hook);
+	ret |= syscall_set_hook(system_call_table, __NR_umount, (void **) &orig_oldumount, oldumount_hook);
 #endif
-	reenable_page_protection(cr0);
 	preempt_enable();
-	return 0;
+
+	return ret;
 }
 
 /***************************BLOCK DEVICE DRIVER***************************/
@@ -5706,7 +5881,13 @@ static int __init agent_init(void){
 		goto error;
 	}
 
-	if(elastio_snap_may_hook_syscalls) (void)hook_system_call_table();
+	if(elastio_snap_may_hook_syscalls) {
+		ret = hook_system_call_table();
+		if (ret) {
+			LOG_ERROR(ret, "couldn't hook the syscall table");
+			return ret;
+		}
+	}
 
 	return 0;
 
