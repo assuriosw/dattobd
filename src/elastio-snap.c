@@ -5342,6 +5342,9 @@ static asmlinkage long mount_hook(char __user *dev_name, char __user *dir_name, 
 		LOG_DEBUG("detected block device mount: %s -> %s : 0x%lx", buff_dev_name,
 			buff_dir_name, real_flags);
 
+	kfree(buff_dev_name);
+	kfree(buff_dir_name);
+
 	//get rid of the magic value if its present
 	if((real_flags & MS_MGC_MSK) == MS_MGC_VAL) real_flags &= ~MS_MGC_MSK;
 
@@ -5354,7 +5357,7 @@ static asmlinkage long mount_hook(char __user *dev_name, char __user *dir_name, 
 #endif
 	}else if((real_flags & MS_RDONLY) && (real_flags & MS_REMOUNT)){
 		//we are remounting read-only, same as umounting as far as the driver is concerned
-		ret = handle_bdev_mount_nowrite(buff_dir_name, 0, &idx);
+		ret = handle_bdev_mount_nowrite(dir_name, 0, &idx);
 
 #ifdef USE_ARCH_MOUNT_FUNCS
 		sys_ret = orig_mount(regs);
@@ -5362,7 +5365,7 @@ static asmlinkage long mount_hook(char __user *dev_name, char __user *dir_name, 
 		sys_ret = orig_mount(dev_name, dir_name, type, flags, data);
 #endif
 
-		post_umount_check(ret, sys_ret, idx, buff_dir_name);
+		post_umount_check(ret, sys_ret, idx, dir_name);
 	}else{
 		//new read-write mount
 #ifdef USE_ARCH_MOUNT_FUNCS
@@ -5370,11 +5373,8 @@ static asmlinkage long mount_hook(char __user *dev_name, char __user *dir_name, 
 #else
 		sys_ret = orig_mount(dev_name, dir_name, type, flags, data);
 #endif
-		if(!sys_ret) handle_bdev_mounted_writable(buff_dir_name, &idx);
+		if(!sys_ret) handle_bdev_mounted_writable(dir_name, &idx);
 	}
-
-	kfree(buff_dev_name);
-	kfree(buff_dir_name);
 
 	LOG_DEBUG("mount returned: %ld", sys_ret);
 
@@ -5422,11 +5422,14 @@ static asmlinkage long umount_hook(char __user *name, int flags){
 	if(!buff_dev_name) {
 		return -ENOMEM;
 	}
+
 	ret = copy_from_user(buff_dev_name, name, PATH_MAX);
 	if(ret)
-		LOG_DEBUG("detected block device umount error : %d", ret);
+		LOG_DEBUG("detected block device umount error: %d", ret);
 	else
 		LOG_DEBUG("detected block device umount: %s : %ld", buff_dev_name, flags);
+
+	kfree(buff_dev_name);
 
 	ret = handle_bdev_mount_nowrite(buff_dev_name, flags, &idx);
 #ifdef USE_ARCH_MOUNT_FUNCS
@@ -5434,8 +5437,7 @@ static asmlinkage long umount_hook(char __user *name, int flags){
 #else
 	sys_ret = orig_umount(name, flags);
 #endif
-	post_umount_check(ret, sys_ret, idx, buff_dev_name);
-	kfree(buff_dev_name);
+	post_umount_check(ret, sys_ret, idx, name);
 
 	LOG_DEBUG("umount returned: %ld", sys_ret);
 
@@ -5514,6 +5516,9 @@ static int set_page_rw(unsigned long addr)
 	int (*__change_memory_common)(unsigned long, unsigned long,
 			pgprot_t, pgprot_t) = (void *)__CHANGE_MEMORY_COMMON_ADDR;
 
+	if (__change_memory_common == NULL)
+		return -1;
+
     vm_unmap_aliases();
     return __change_memory_common(addr, PAGE_SIZE, __pgprot(PTE_WRITE), __pgprot(PTE_RDONLY));
 }
@@ -5522,6 +5527,9 @@ static int set_page_ro(unsigned long addr)
 {
 	int (*__change_memory_common)(unsigned long, unsigned long,
 			pgprot_t, pgprot_t) = (void *)__CHANGE_MEMORY_COMMON_ADDR;
+
+	if (__change_memory_common == NULL)
+		return -1;
 
     vm_unmap_aliases();
     return __change_memory_common(addr, PAGE_SIZE, __pgprot(PTE_RDONLY), __pgprot(PTE_WRITE));
@@ -5537,11 +5545,8 @@ static int set_page_ro(unsigned long addr)
 static inline void wp_cr0(unsigned long cr0) {
 	// Enabling/disabling approach with usage of the write_cr0 function stopped to work somewhere starting from the kernels 5.X (maybe 5.3)
 	// after this patch https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=8dbec27a242cd3e2816eeb98d3237b9f57cf6232
-	// Hence there is a workaround: if we couldn't reset the WP bit, just do this forcefuly without a native function
-	write_cr0(cr0);
-	if (read_cr0() & X86_CR0_WP) {
-		__asm__ __volatile__ ("mov %0, %%cr0": "+r" (cr0));
-	}
+	// This is a simple workaround
+	__asm__ __volatile__ ("mov %0, %%cr0": "+r" (cr0));
 }
 
 static inline unsigned long disable_page_protection(void) {
@@ -5881,7 +5886,7 @@ static int __init agent_init(void){
 		goto error;
 	}
 
-	if(elastio_snap_may_hook_syscalls) {
+	if (elastio_snap_may_hook_syscalls) {
 		ret = hook_system_call_table();
 		if (ret) {
 			LOG_ERROR(ret, "couldn't hook the syscall table");
