@@ -5491,9 +5491,11 @@ static void **find_sys_call_table(void){
 #if __X64_SYS_MOUNT_ADDR
 	mount_address = __X64_SYS_MOUNT_ADDR;
 	umount_address = __X64_SYS_UMOUNT_ADDR;
-#else
+#elif __ARM64_SYS_MOUNT_ADDR
 	mount_address = __ARM64_SYS_MOUNT_ADDR;
 	umount_address = __ARM64_SYS_UMOUNT_ADDR;
+#else
+#error "Architecture not supported"
 #endif
 #endif
 
