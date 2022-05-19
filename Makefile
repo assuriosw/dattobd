@@ -4,7 +4,7 @@ export CC = gcc
 export RM = rm -f
 CFLAGS ?= -Wall
 export CCFLAGS = $(CFLAGS) -std=gnu99
-export PREFIX = /usr/local
+export PREFIX = /usr
 export BASE_DIR = $(abspath .)
 
 BUILDDIR := $(CURDIR)/pkgbuild
@@ -16,9 +16,12 @@ PKGBUILDFLAGS := --define "_topdir $(BUILDDIR)" -ba --with devmode
 PKGBUILDROOT_CREATE_CMD = mkdir -p $(BUILDDIR)/DEBS $(BUILDDIR)/SDEBS $(BUILDDIR)/RPMS $(BUILDDIR)/SRPMS \
 			$(BUILDDIR)/SOURCES $(BUILDDIR)/SPECS $(BUILDDIR)/BUILD $(BUILDDIR)/BUILDROOT
 
-.PHONY: all driver library-shared library-static library application application-shared utils clean install uninstall pkgclean pkgprep deb rpm
+.PHONY: all check_root driver library-shared library-static library application application-shared utils clean install uninstall pkgclean pkgprep deb rpm
 
-all: driver library application utils
+all: check_root driver library application utils
+
+check_root:
+	@if ! [ "$(shell id -u)" = 0 ];then echo "You are not root, run this target as root, please"; exit 1; fi
 
 driver:
 	$(MAKE) -C src
