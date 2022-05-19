@@ -5279,9 +5279,7 @@ static void post_umount_check(int dormant_ret, long umount_ret, unsigned int idx
 #ifdef USE_ARCH_MOUNT_FUNCS
 static int mount_hook_extract_params(struct pt_regs *regs, char **dev_name, char **dir_name, unsigned long *flags)
 {
-	if (!regs || !dev_name ||
-			!dir_name || !flags)
-		return -1;
+	if (!regs || !dev_name || !dir_name || !flags) return -EINVAL;
 
 #if defined(CONFIG_ARM64)
 	*dev_name = (char *) regs->regs[0];
@@ -5317,7 +5315,7 @@ static asmlinkage long mount_hook(char __user *dev_name, char __user *dir_name, 
 	if (ret) {
 		// should never happen
 		LOG_ERROR(ret, "couldn't extract mount params");
-		return -EOPNOTSUPP;
+		return ret;
 	}
 #endif
 
@@ -5333,8 +5331,8 @@ static asmlinkage long mount_hook(char __user *dev_name, char __user *dir_name, 
 		return -ENOMEM;
 	}
 
-	ret_dev = copy_from_user(buff_dev_name, (char *) dev_name, PATH_MAX);
-	ret_dir = copy_from_user(buff_dir_name, (char *) dir_name, PATH_MAX);
+	ret_dev = copy_from_user(buff_dev_name, dev_name, PATH_MAX);
+	ret_dir = copy_from_user(buff_dir_name, dir_name, PATH_MAX);
 
 	if(ret_dev || ret_dir)
 		LOG_DEBUG("detected block device Get mount params error!");
@@ -5384,8 +5382,7 @@ static asmlinkage long mount_hook(char __user *dev_name, char __user *dir_name, 
 #ifdef USE_ARCH_MOUNT_FUNCS
 static int umount_hook_extract_params(struct pt_regs *regs, char **dev_name, unsigned long *flags)
 {
-	if (!regs || !dev_name || !flags)
-		return -1;
+	if (!regs || !dev_name || !flags) return -EINVAL;
 
 #if defined(CONFIG_ARM64)
 	*dev_name = (char *) regs->regs[0];
@@ -5414,7 +5411,7 @@ static asmlinkage long umount_hook(char __user *name, int flags){
 	if (ret) {
 		// should never happen
 		LOG_ERROR(ret, "couldn't extract umount params");
-		return -EOPNOTSUPP;
+		return ret;
 	}
 #endif
 
@@ -5463,6 +5460,7 @@ static asmlinkage long oldumount_hook(char __user *name){
 	kfree(buff_dev_name);
 
 	ret = handle_bdev_mount_nowrite(name, 0, &idx);
+	sys_ret = orig_oldumount(name);
 	post_umount_check(ret, sys_ret, idx, name);
 
 	LOG_DEBUG("oldumount returned: %ld", sys_ret);
@@ -5480,6 +5478,12 @@ static void **find_sys_call_table(void){
 	if(!SYS_CALL_TABLE_ADDR)
 		return NULL;
 
+// On kernels after 4.9+, sys_mount() & sys_umount()
+// have been switched to the architecture-dependent
+// functions, f.e., __x86_64_sys_mount() or __arm64_sys_umount()
+// These functions use 'struct pt_regs *' as a parameter.
+// Hence, we added additional define USE_ARCH_MOUNT_FUNCS
+// to support mount hooks on different kernels
 #ifndef USE_ARCH_MOUNT_FUNCS
 	mount_address = SYS_MOUNT_ADDR;
 	umount_address = SYS_UMOUNT_ADDR;
@@ -5516,8 +5520,10 @@ static int set_page_rw(unsigned long addr)
 	int (*__change_memory_common)(unsigned long, unsigned long,
 			pgprot_t, pgprot_t) = (void *)__CHANGE_MEMORY_COMMON_ADDR;
 
-	if (__change_memory_common == NULL)
-		return -1;
+	if (!__change_memory_common) {
+		LOG_ERROR(-EFAULT, "error getting __change_memory_common address");
+		return -EFAULT;
+	}
 
     vm_unmap_aliases();
     return __change_memory_common(addr, PAGE_SIZE, __pgprot(PTE_WRITE), __pgprot(PTE_RDONLY));
@@ -5528,8 +5534,10 @@ static int set_page_ro(unsigned long addr)
 	int (*__change_memory_common)(unsigned long, unsigned long,
 			pgprot_t, pgprot_t) = (void *)__CHANGE_MEMORY_COMMON_ADDR;
 
-	if (__change_memory_common == NULL)
-		return -1;
+	if (!__change_memory_common) {
+		LOG_ERROR(-EFAULT, "error getting __change_memory_common address");
+		return -EFAULT;
+	}
 
     vm_unmap_aliases();
     return __change_memory_common(addr, PAGE_SIZE, __pgprot(PTE_RDONLY), __pgprot(PTE_WRITE));
@@ -5561,19 +5569,22 @@ static inline void reenable_page_protection(unsigned long cr0) {
 }
 #endif
 
-/** generic function to manage system call table page permissions */
-static inline long syscall_mode_rw(void **syscall_table, int syscall_num)
+/** generic function to set a system call table to a read-write mode */
+static inline int syscall_mode_rw(void **syscall_table, int syscall_num, unsigned long *flags)
 {
+	if (!flags) return -EINVAL;
+
 #if defined(CONFIG_X86_64)
-	return disable_page_protection(); 
+	*flags = disable_page_protection();
+	return 0;
 #elif defined(CONFIG_ARM64)
 	return set_page_rw((unsigned long) (syscall_table + syscall_num));
 #else
-	return -1;
+	return -EOPNOTSUPP;
 #endif
 }
 
-/** generic function to manage system call table page permissions */
+/** generic function to set a system call table to a read-only mode */
 static inline long syscall_mode_ro(void **syscall_table, int syscall_num, unsigned long flags)
 {
 #if defined(CONFIG_X86_64)
@@ -5581,7 +5592,7 @@ static inline long syscall_mode_ro(void **syscall_table, int syscall_num, unsign
 #elif defined(CONFIG_ARM64)
 	return set_page_ro((unsigned long) (syscall_table + syscall_num));
 #else
-	return -1;
+	return -EOPNOTSUPP;
 #endif
 	return 0;
 }
@@ -5589,11 +5600,14 @@ static inline long syscall_mode_ro(void **syscall_table, int syscall_num, unsign
 static inline int syscall_set_hook(void **syscall_table,
 		int syscall_num, void **orig_hook, void *new_hook)
 {
-	long flags;
+	int ret;
+	unsigned long flags;
 
-	flags = syscall_mode_rw(syscall_table, syscall_num);
-	if (flags == -1)
-		return -EOPNOTSUPP;
+	ret = syscall_mode_rw(syscall_table, syscall_num, &flags);
+	if (ret) {
+		LOG_ERROR(ret, "failed to switch the system call table to the read-write mode");
+		return ret;
+	}
 
 	if (orig_hook)
 		*orig_hook = syscall_table[syscall_num];
@@ -5628,7 +5642,7 @@ static int hook_system_call_table(void)
 	LOG_DEBUG("locating system call table");
 	system_call_table = find_sys_call_table();
 	if(!system_call_table){
-		LOG_WARN("failed to locate system call table, persistence disabled");
+		LOG_ERROR(-ENOENT, "failed to locate system call table, persistence disabled");
 		return -ENOENT;
 	}
 
@@ -5890,7 +5904,7 @@ static int __init agent_init(void){
 		ret = hook_system_call_table();
 		if (ret) {
 			LOG_ERROR(ret, "couldn't hook the syscall table");
-			return ret;
+			goto error;
 		}
 	}
 
