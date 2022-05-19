@@ -12,7 +12,8 @@ jobs:
   build-packages:
     name: Build Packages
     runs-on:
-      - baremetal
+      - metal
+      # - {{ matrix.arch }}
 
     strategy:
       matrix:
@@ -24,6 +25,19 @@ jobs:
           ubuntu2004, ubuntu2204
         ]
         arch: [ amd64 ]
+        include:
+          - arch: arm64
+            distro: amazon2
+          - arch: arm64
+            distro: fedora35
+          - arch: arm64
+            distro: fedora36
+          - arch: arm64
+            distro: debian10
+          - arch: arm64
+            distro: debian11
+          - arch: arm64
+            distro: centos8
 
     steps:
       - name: Checkout sources
@@ -47,7 +61,7 @@ jobs:
         run: .github/scripts/start_box.sh
 
       - name: Boot Fedora 32 into kernel 5.9
-        if: "${{ matrix.distro == 'fedora32' }}"
+        if: "${{ matrix.distro == 'fedora32' && matrix.arch == 'amd64' }}"
         run: |
           vagrant ssh ${{env.INSTANCE_NAME}} -c '
             sudo yum localinstall -y https://kojipkgs.fedoraproject.org//packages/kernel/5.9.16/100.fc32/x86_64/kernel-core-5.9.16-100.fc32.x86_64.rpm
@@ -101,6 +115,8 @@ jobs:
           rm -f ${TEST_IMAGE}
 
       - name: Upload artifacts
+        # upload amd64 only, should work for both architectures
+        if: "${{ matrix.arch == 'amd64' }}"
         run: vagrant ssh ${{env.INSTANCE_NAME}} -c 'AWS_SECRET_ACCESS_KEY='"'$AWS_SECRET_ACCESS_KEY'"' repobuild/upload.sh
           --source repobuild/artifacts/
           --bucket artifacts.assur.io
