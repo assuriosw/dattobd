@@ -13,7 +13,7 @@ jobs:
     name: Build Packages
     runs-on:
       - metal
-      # - {{ matrix.arch }}
+      - ${{ matrix.arch }}
 
     strategy:
       matrix:
