@@ -23,7 +23,10 @@ PKGBUILDROOT_CREATE_CMD = mkdir -p $(BUILDDIR)/DEBS $(BUILDDIR)/SDEBS $(BUILDDIR
 all: check_root driver library application utils
 
 check_root:
-	@if ! [ "$(shell id -u)" = 0 ];then echo "You are not root, run this target as root, please"; exit 1; fi
+ifneq ($(EUID),0)
+	@echo "Run as sudo or root."
+	@exit 1
+endif
 
 driver:
 	$(MAKE) -C src
