@@ -7,6 +7,8 @@ export CCFLAGS = $(CFLAGS) -std=gnu99
 export PREFIX = /usr
 export BASE_DIR = $(abspath .)
 
+EUID := $(shell id -u -r)
+
 BUILDDIR := $(CURDIR)/pkgbuild
 
 # Flags to pass to debbuild/rpmbuild
