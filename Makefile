@@ -18,7 +18,7 @@ PKGBUILDFLAGS := --define "_topdir $(BUILDDIR)" -ba --with devmode
 PKGBUILDROOT_CREATE_CMD = mkdir -p $(BUILDDIR)/DEBS $(BUILDDIR)/SDEBS $(BUILDDIR)/RPMS $(BUILDDIR)/SRPMS \
 			$(BUILDDIR)/SOURCES $(BUILDDIR)/SPECS $(BUILDDIR)/BUILD $(BUILDDIR)/BUILDROOT
 
-.PHONY: all check_root driver library-shared library-static library application application-shared utils clean install uninstall pkgclean pkgprep deb rpm
+.PHONY: all driver library-shared library-static library application application-shared utils clean install uninstall pkgclean pkgprep deb rpm
 
 all: check_root driver library application utils
 
@@ -28,7 +28,7 @@ ifneq ($(EUID),0)
 	@exit 1
 endif
 
-driver:
+driver: check_root
 	$(MAKE) -C src
 
 library-shared:
