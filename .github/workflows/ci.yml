@@ -105,12 +105,18 @@ jobs:
           ARCH=$(uname -m)
           qemu-img create -f qcow2 ${TEST_IMAGE} 1G
           [ ${ARCH} != "x86_64" ] && VIRSH_FLAGS="--config" || true
-          virsh attach-disk --domain ${BOX_DIR##*/}_${INSTANCE_NAME} --source ${TEST_IMAGE} --target vdb --driver qemu --subdriver qcow2 --targetbus virtio ${VIRSH_FLAGS}
+          virsh attach-disk --domain ${BOX_DIR##*/}_${INSTANCE_NAME} --source ${TEST_IMAGE} --target vdb --driver qemu --subdriver qcow2 --targetbus virtio ${VIRSH_FLAGS-}
+          # ARM64 boxes don't support "hot plug" w/o reboot
           if [ ${ARCH} != "x86_64" ]; then
-            vagrant reload $INSTANCE_NAME
+            virsh destroy --domain ${BOX_DIR##*/}_${INSTANCE_NAME}
+            virsh start --domain ${BOX_DIR##*/}_${INSTANCE_NAME}
+            while ! vagrant ssh ${INSTANCE_NAME} -c 'uptime'; do
+              echo "Waiting..."
+              sleep 1
+            done
           fi
-
-          cd $BOX_DIR && vagrant ssh ${{env.INSTANCE_NAME}} -c 'echo -e "n\np\n\n\n\nw" | sudo fdisk /dev/vdb'
+          vagrant ssh ${{env.INSTANCE_NAME}} -c 'echo -e "n\np\n\n\n\nw" | sudo fdisk /dev/vdb'
+        working-directory: ${{env.BOX_DIR}}
 
       - name: Run tests (qcow2 disk)
         run: vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh /dev/vdb1"
@@ -119,11 +125,16 @@ jobs:
 
       - name: Upload artifacts
         # upload amd64 only, should work for both architectures
-        run: vagrant ssh ${{env.INSTANCE_NAME}} -c 'AWS_SECRET_ACCESS_KEY='"'$AWS_SECRET_ACCESS_KEY'"' repobuild/upload.sh
-          --source repobuild/artifacts/
-          --bucket artifacts.assur.io
-          --target /linux/elastio-snap/${SOURCE_BRANCH}/${GITHUB_RUN_NUMBER}/${PKG_TYPE}
-          --exclude *GPG-KEY'
+        run: |
+          excl_ptrn="*GPG-KEY"
+          # We have to avoid a race condition when package like elastio-snap-dkms_X.XX.XX-1debian11_all.deb is uploaded from
+          # 2 Debian 11 VMs amd64 and arm64 at the same time to the same location.
+          [ $(uname -m) != "x86_64" ] && [ -f /etc/debian_version ] && excl_ptrn=$excl_ptrn",*_all.deb" || true
+          vagrant ssh ${{env.INSTANCE_NAME}} -c 'AWS_SECRET_ACCESS_KEY='"'$AWS_SECRET_ACCESS_KEY'"' repobuild/upload.sh \
+            --source repobuild/artifacts/ \
+            --bucket artifacts.assur.io \
+            --target /linux/elastio-snap/${SOURCE_BRANCH}/${GITHUB_RUN_NUMBER}/${PKG_TYPE} \
+            --exclude '"'$excl_ptrn'"''
         working-directory: ${{env.BOX_DIR}}
 
       - name: Destroy a box
