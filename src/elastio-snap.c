@@ -5520,7 +5520,8 @@ static void **find_sys_call_table(void){
 static int set_page_rw(unsigned long addr)
 {
 	int (*__change_memory_common)(unsigned long, unsigned long,
-			pgprot_t, pgprot_t) = (void *)__CHANGE_MEMORY_COMMON_ADDR;
+			pgprot_t, pgprot_t) = (__CHANGE_MEMORY_COMMON_ADDR != 0) ?
+        (int (*)(unsigned long, unsigned long, pgprot_t, pgprot_t)) (__CHANGE_MEMORY_COMMON_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
 
 	if (!__change_memory_common) {
 		LOG_ERROR(-EFAULT, "error getting __change_memory_common address");
@@ -5534,7 +5535,8 @@ static int set_page_rw(unsigned long addr)
 static int set_page_ro(unsigned long addr)
 {
 	int (*__change_memory_common)(unsigned long, unsigned long,
-			pgprot_t, pgprot_t) = (void *)__CHANGE_MEMORY_COMMON_ADDR;
+			pgprot_t, pgprot_t) = (__CHANGE_MEMORY_COMMON_ADDR != 0) ?
+        (int (*)(unsigned long, unsigned long, pgprot_t, pgprot_t)) (__CHANGE_MEMORY_COMMON_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
 
 	if (!__change_memory_common) {
 		LOG_ERROR(-EFAULT, "error getting __change_memory_common address");
