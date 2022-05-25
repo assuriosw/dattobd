@@ -102,8 +102,14 @@ jobs:
 
       - name: Attach qcow2 disk
         run: |
+          ARCH=$(uname -m)
           qemu-img create -f qcow2 ${TEST_IMAGE} 1G
-          virsh attach-disk --domain ${BOX_DIR##*/}_${INSTANCE_NAME} --source ${TEST_IMAGE} --target vdb --driver qemu --subdriver qcow2 --targetbus virtio
+          [ ${ARCH} != "x86_64" ] && VIRSH_FLAGS="--config" || true
+          virsh attach-disk --domain ${BOX_DIR##*/}_${INSTANCE_NAME} --source ${TEST_IMAGE} --target vdb --driver qemu --subdriver qcow2 --targetbus virtio ${VIRSH_FLAGS}
+          if [ ${ARCH} != "x86_64" ]; then
+            vagrant reload $INSTANCE_NAME
+          fi
+
           cd $BOX_DIR && vagrant ssh ${{env.INSTANCE_NAME}} -c 'echo -e "n\np\n\n\n\nw" | sudo fdisk /dev/vdb'
 
       - name: Run tests (qcow2 disk)
@@ -111,17 +117,8 @@ jobs:
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 5
 
-      - name: Detach external drive
-        if: always()
-        run: |
-          if virsh domblklist ${BOX_DIR##*/}_${INSTANCE_NAME} --details | grep "file" | awk '{ print $NF }' | grep ${TEST_IMAGE} ; then
-              virsh detach-disk --domain ${BOX_DIR##*/}_${INSTANCE_NAME} ${TEST_IMAGE}
-          fi
-          rm -f ${TEST_IMAGE}
-
       - name: Upload artifacts
         # upload amd64 only, should work for both architectures
-        if: "${{ matrix.arch == 'amd64' }}"
         run: vagrant ssh ${{env.INSTANCE_NAME}} -c 'AWS_SECRET_ACCESS_KEY='"'$AWS_SECRET_ACCESS_KEY'"' repobuild/upload.sh
           --source repobuild/artifacts/
           --bucket artifacts.assur.io
@@ -131,7 +128,9 @@ jobs:
 
       - name: Destroy a box
         if: always()
-        run: .github/scripts/destroy_box.sh
+        run: |
+          .github/scripts/destroy_box.sh
+          rm -f ${TEST_IMAGE}
 
   manifest:
     name: Artifacts manifest
