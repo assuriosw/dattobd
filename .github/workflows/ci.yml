@@ -90,7 +90,9 @@ jobs:
         working-directory: ${{env.BOX_DIR}}
 
       - name: Install kernel module
-        run: vagrant ssh ${{env.INSTANCE_NAME}} -c 'sudo make install'
+        run: |
+          vagrant ssh ${{env.INSTANCE_NAME}} -c 'sudo make install'
+          vagrant ssh ${{env.INSTANCE_NAME}} -c 'sudo make uninstall'
         working-directory: ${{env.BOX_DIR}}
 
       - name: Run tests (loop device)
