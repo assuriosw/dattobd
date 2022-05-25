@@ -117,15 +117,6 @@ jobs:
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 5
 
-      - name: Upload artifacts
-        # upload amd64 only, should work for both architectures
-        run: vagrant ssh ${{env.INSTANCE_NAME}} -c 'AWS_SECRET_ACCESS_KEY='"'$AWS_SECRET_ACCESS_KEY'"' repobuild/upload.sh
-          --source repobuild/artifacts/
-          --bucket artifacts.assur.io
-          --target /linux/elastio-snap/${SOURCE_BRANCH}/${GITHUB_RUN_NUMBER}/${PKG_TYPE}
-          --exclude *GPG-KEY'
-        working-directory: ${{env.BOX_DIR}}
-
       - name: Destroy a box
         if: always()
         run: |
