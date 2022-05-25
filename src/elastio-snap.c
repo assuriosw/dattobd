@@ -5647,6 +5647,11 @@ static int hook_system_call_table(void)
 	system_call_table = find_sys_call_table();
 	if(!system_call_table){
 		LOG_ERROR(-ENOENT, "failed to locate system call table, persistence disabled");
+
+		if (!SYS_CALL_TABLE_ADDR) {
+			LOG_WARN("make sure that CONFIG_KALLSYMS_ALL is enabled");
+		}
+
 		return -ENOENT;
 	}
 
@@ -5908,7 +5913,6 @@ static int __init agent_init(void){
 		ret = hook_system_call_table();
 		if (ret) {
 			LOG_ERROR(ret, "couldn't hook the syscall table");
-			goto error;
 		}
 	}
 
