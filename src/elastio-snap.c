@@ -5428,7 +5428,7 @@ static asmlinkage long umount_hook(char __user *name, int flags){
 
 	kfree(buff_dev_name);
 
-	ret = handle_bdev_mount_nowrite(buff_dev_name, flags, &idx);
+	ret = handle_bdev_mount_nowrite(name, flags, &idx);
 #ifdef USE_ARCH_MOUNT_FUNCS
 	sys_ret = orig_umount(regs);
 #else
