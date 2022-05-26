@@ -135,6 +135,14 @@ jobs:
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 5
 
+      - name: Detach external drive
+        if: always()
+        run: |
+          if virsh domblklist ${BOX_DIR##*/}_${INSTANCE_NAME} --details | grep "file" | awk '{ print $NF }' | grep ${TEST_IMAGE} ; then
+              virsh detach-disk --domain ${BOX_DIR##*/}_${INSTANCE_NAME} ${TEST_IMAGE}
+          fi
+          rm -f ${TEST_IMAGE}
+
       - name: Upload artifacts
         # upload amd64 only, should work for both architectures
         run: |
@@ -151,9 +159,7 @@ jobs:
 
       - name: Destroy a box
         if: always()
-        run: |
-          .github/scripts/destroy_box.sh
-          rm -f ${TEST_IMAGE}
+        run: .github/scripts/destroy_box.sh
 
   manifest:
     name: Artifacts manifest
