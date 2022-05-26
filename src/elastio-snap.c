@@ -5424,7 +5424,7 @@ static asmlinkage long umount_hook(char __user *name, int flags){
 	if(ret)
 		LOG_DEBUG("detected block device umount error: %d", ret);
 	else
-		LOG_DEBUG("detected block device umount: %s : %ld", buff_dev_name, flags);
+		LOG_DEBUG("detected block device umount: %s : %ld", buff_dev_name, (unsigned long) flags);
 
 	kfree(buff_dev_name);
 
