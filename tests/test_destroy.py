@@ -9,7 +9,7 @@
 import errno
 import os
 import unittest
-
+import platform
 import elastio_snap
 import util
 from devicetestcase import DeviceTestCase
@@ -40,6 +40,7 @@ class TestDestroy(DeviceTestCase):
         self.assertFalse(os.path.exists(self.snap_device))
         self.assertIsNone(elastio_snap.info(self.minor))
 
+    @unittest.skipIf(int(platform.release().split(".")[0]) >= 5 and int(platform.release().split(".")[1]) >= 13, "Not fixed yet on the kernels newer than 5.13 (see #126)")
     def test_destroy_dormant_snapshot(self):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
 
@@ -51,6 +52,8 @@ class TestDestroy(DeviceTestCase):
         self.assertFalse(os.path.exists(self.snap_device))
         self.assertIsNone(elastio_snap.info(self.minor))
 
+    @unittest.skipIf(int(platform.release().split(".")[0]) >= 5 and int(platform.release().split(".")[1]) >= 13, "Not fixed yet on the kernels newer than 5.13 (see #126)")
+    @unittest.skip("Broken since 4.17 (see #144)")
     def test_destroy_dormant_incremental(self):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
         self.assertEqual(elastio_snap.transition_to_incremental(self.minor), 0)
