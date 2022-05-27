@@ -144,7 +144,6 @@ jobs:
           rm -f ${TEST_IMAGE}
 
       - name: Upload artifacts
-        # upload amd64 only, should work for both architectures
         run: |
           excl_ptrn="*GPG-KEY"
           # We have to avoid a race condition when package like elastio-snap-dkms_X.XX.XX-1debian11_all.deb is uploaded from
