@@ -112,6 +112,12 @@ jobs:
         # 5 minutes seems to be reasonable timeout.
         timeout-minutes: 5
 
+      - name: Show dmesg
+        if: always()
+        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "sudo dmesg -c"
+        working-directory: ${{env.BOX_DIR}}
+        timeout-minutes: 1
+
       - name: Attach qcow2 disk
         run: |
           ARCH=$(uname -m)
@@ -134,6 +140,12 @@ jobs:
         run: vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh /dev/vdb1"
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 5
+
+      - name: Show dmesg
+        if: always()
+        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "sudo dmesg -c"
+        working-directory: ${{env.BOX_DIR}}
+        timeout-minutes: 1
 
       - name: Detach external drive
         if: always()
