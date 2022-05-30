@@ -27,9 +27,10 @@ MODULE_VERSION(ELASTIO_SNAP_VERSION);
 #define LOG_ERROR(error, fmt, args...) printk(KERN_ERR "elastio-snap: " fmt ": %d\n", ## args, error)
 #define PRINT_BIO(text, bio) LOG_DEBUG(text ": sect = %llu size = %u", (unsigned long long)bio_sector(bio), bio_size(bio) / 512)
 
-/*********************************REDEFINED FUNCTIONS*******************************/
 #include <linux/delay.h>
+#include <linux/fiemap.h>
 
+/*********************************REDEFINED FUNCTIONS*******************************/
 #ifdef HAVE_UUID_H
 #include <linux/uuid.h>
 #endif
@@ -3829,10 +3830,87 @@ static int file_is_on_bdev(const struct file *file, struct block_device *bdev) {
 	return ret;
 }
 
+//---
+
+#define EXT4_I(inode) (container_of(inode, struct ext4_inode_info, vfs_inode))
+
+#define EXT4_INODE_BIT_FNS(name, field, offset)				\
+static inline int ext4_test_inode_##name(struct inode *inode, int bit)	\
+{									\
+	return test_bit(bit + (offset), &EXT4_I(inode)->i_##field);	\
+}									\
+static inline void ext4_set_inode_##name(struct inode *inode, int bit)	\
+{									\
+	set_bit(bit + (offset), &EXT4_I(inode)->i_##field);		\
+}									\
+static inline void ext4_clear_inode_##name(struct inode *inode, int bit) \
+{									\
+	clear_bit(bit + (offset), &EXT4_I(inode)->i_##field);		\
+}
+
+/* Add these declarations here only so that these functions can be
+ * found by name.  Otherwise, they are very hard to locate. */
+static inline int ext4_test_inode_flag(struct inode *inode, int bit);
+static inline void ext4_set_inode_flag(struct inode *inode, int bit);
+static inline void ext4_clear_inode_flag(struct inode *inode, int bit);
+EXT4_INODE_BIT_FNS(flag, flags, 0)
+
+static int ext4_fiemap_check_ranges(struct inode *inode, u64 start, u64 *len)
+{
+	u64 maxbytes;
+
+	if (ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS))
+		maxbytes = inode->i_sb->s_maxbytes;
+	else
+		maxbytes = (inode->i_sb)->s_bitmap_maxbytes;
+
+	if (*len == 0)
+		return -EINVAL;
+	if (start > maxbytes)
+		return -EFBIG;
+
+	/*
+	 * Shrink request scope to what the fs can actually handle.
+	 */
+	if (*len > maxbytes || (maxbytes - *len) < start)
+		*len = maxbytes - start;
+	return 0;
+}
+
+static int ext4_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
+		u64 start, u64 len)
+{
+	int error = 0;
+
+	/*
+	 * For bitmap files the maximum size limit could be smaller than
+	 * s_maxbytes, so check len here manually instead of just relying on the
+	 * generic check.
+	 */
+	error = ext4_fiemap_check_ranges(inode, start, &len);
+	if (error)
+		return error;
+
+	if (fieinfo->fi_flags & FIEMAP_FLAG_XATTR) {
+		fieinfo->fi_flags &= ~FIEMAP_FLAG_XATTR;
+		return iomap_fiemap(inode, fieinfo, start, len,
+				    &ext4_iomap_xattr_ops);
+	}
+
+	return iomap_fiemap(inode, fieinfo, start, len, &ext4_iomap_report_ops);
+}
+
+///---
+
 static int __tracer_setup_cow(struct snap_device *dev, struct block_device *bdev, const char *cow_path, sector_t size, unsigned long fallocated_space, unsigned long cache_size, const uint8_t *uuid, uint64_t seqid, int open_method){
 	int ret;
 	uint64_t max_file_size;
 	char bdev_name[BDEVNAME_SIZE];
+	int (*fiemap)(struct inode *, struct fiemap_extent_info *, u64 start, u64 len);
+	
+	//union { struct fiemap_extent_info f; char c[768]; } fiemap_buf;
+	struct fiemap_extent_info* fiemap_info;
+	//uint64_t len;
 
 	bdevname(bdev, bdev_name);
 
@@ -3878,6 +3956,44 @@ static int __tracer_setup_cow(struct snap_device *dev, struct block_device *bdev
 		//find the cow file's inode number
 		LOG_DEBUG("finding cow file inode");
 		dev->sd_cow_inode = elastio_snap_get_dentry(dev->sd_cow->filp)->d_inode;
+		
+		//int (*fiemap)(struct inode *, struct fiemap_extent_info *, u64 start, u64 len);
+		fiemap = dev->sd_cow_inode->i_op->fiemap;
+		
+		//get cow file extents
+		
+		/*
+		fiemap_buf.f.fi_flags = FIEMAP_FLAG_SYNC;
+		fiemap_buf.f.fi_extents_mapped = 0;
+		fiemap_buf.f.fi_extents_max = (sizeof(fiemap_buf) - sizeof(fiemap_buf.f)) / sizeof(struct fiemap_extent);
+		
+		len = dev->sd_cow->file_max;
+		
+		ret = fiemap_prep(dev->sd_cow_inode, &fiemap_buf.f, 0, &len, 0);
+		if (ret) {
+			LOG_ERROR(ret, "error preparing cow file for getting extents");
+			goto error;
+		}
+		LOG_DEBUG("fiemap_prep for cow file inode %d  %u", ret, fiemap_buf.f.fi_extents_mapped); ///---
+		*/
+
+		//ret = fiemap_fill_next_extent(&fiemap_buf.f, 0, 0, len, FIEMAP_EXTENT_DATA_TAIL | FIEMAP_EXTENT_DATA_INLINE);
+		
+				
+		//LOG_DEBUG("fileop from cow file inode %p (%d)", fiemap, ret); ///---
+		//LOG_DEBUG("fiemap_fill_next_extent for cow file inode %d", ret); ///---
+		
+		fiemap_info = vzalloc(4096 * 1024);
+		//--fiemap_info->fi_flags = FIEMAP_FLAG_SYNC;
+		fiemap_info->fi_extents_mapped = 10;
+		fiemap_info->fi_extents_max = 4096 * 10;
+		
+		ret = fiemap(dev->sd_cow_inode, fiemap_info, 0, 4096 * 3);
+		
+		LOG_DEBUG("fiemap for cow file inode %d", ret); ///---
+		vfree(fiemap_info);
+		
+		ret = 0;
 	}
 
 	return 0;
