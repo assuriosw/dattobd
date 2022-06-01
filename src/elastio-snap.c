@@ -1016,6 +1016,7 @@ struct snap_device{
 	atomic_t sd_refs; //number of users who have this device open
 	atomic_t sd_fail_code; //failure return code
 	atomic_t sd_memory_state; //memory state to signal memory usage has exceeded threshold
+	atomic_t sd_cow_file_state; //cow file state to signal cow has exceeded max size
 	sector_t sd_sect_off; //starting sector of base block device
 	sector_t sd_size; //size of device in sectors
 	struct request_queue *sd_queue; //snap device request queue
@@ -1185,6 +1186,17 @@ static inline int tracer_read_memory_state(const struct snap_device *dev){
 static inline void tracer_set_memory_state(struct snap_device *dev, int error){
 	smp_mb();
 	(void)atomic_cmpxchg(&dev->sd_memory_state, 0, error);
+	smp_mb();
+}
+
+static inline int tracer_read_cow_file_state(const struct snap_device *dev){
+	smp_mb();
+	return atomic_read(&dev->sd_cow_file_state);
+}
+
+static inline void tracer_set_cow_file_state(struct snap_device *dev, int error){
+	smp_mb();
+	(void)atomic_cmpxchg(&dev->sd_cow_file_state, 0, error);
 	smp_mb();
 }
 
@@ -3089,10 +3101,13 @@ static int snap_cow_thread(void *data){
 				continue;
 			}
 
-			ret = snap_handle_write_bio(dev, bio);
-			if(ret){
-				LOG_ERROR(ret, "error handling write bio in kernel thread");
-				tracer_set_fail_state(dev, ret);
+			if (tracer_read_cow_file_state(dev) == 0)
+			{
+				ret = snap_handle_write_bio(dev, bio);
+				if (ret) {
+					LOG_ERROR(ret, "error handling write bio in kernel thread");
+					tracer_set_cow_file_state(dev, ret);
+				}
 			}
 
 			bio_free_clone(bio);
@@ -3685,6 +3700,7 @@ static void __tracer_init(struct snap_device *dev){
 	LOG_DEBUG("initializing tracer");
 	atomic_set(&dev->sd_fail_code, 0);
 	atomic_set(&dev->sd_memory_state, 0);
+	atomic_set(&dev->sd_cow_file_state, 0);
 	bio_queue_init(&dev->sd_cow_bios);
 	bio_queue_init(&dev->sd_orig_bios);
 	sset_queue_init(&dev->sd_pending_ssets);
@@ -4488,6 +4504,10 @@ static void tracer_elastio_snap_info(const struct snap_device *dev, struct elast
 	info->error = tracer_read_fail_state(dev);
 	if (info->error == 0) {
 		info->error = tracer_read_memory_state(dev);
+		if (info->error == 0)
+		{
+			info->error = tracer_read_cow_file_state(dev);
+		}
 	}
 	info->cache_size = (dev->sd_cache_size)? dev->sd_cache_size : elastio_snap_cow_max_memory_default;
 	strlcpy(info->cow, dev->sd_cow_path, PATH_MAX);
