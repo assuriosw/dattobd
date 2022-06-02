@@ -3276,7 +3276,8 @@ static int snap_trace_bio(struct snap_device *dev, struct bio *bio){
 	sector_t start_sect, end_sect;
 	unsigned int bytes, pages;
 
-	//if we don't need to cow this bio just call the real mrf normally
+	//if we don't need to cow or physical memory usage has exceeded threshold or
+	//	COW file state is failed, this bio just call the real mrf normally
 	if (!bio_needs_cow(bio, dev) || memory_is_too_low(dev) || tracer_read_cow_file_state(dev)) {
 		return elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
 	}
