@@ -5190,7 +5190,7 @@ out:
 //
 // [ Issue https://github.com/elastio/elastio-snap/issues/126 ]
 //
-//  - at the first mount, the block device is owned by the loop driver
+//  - at the first mount, the block device is owned by the parent driver
 //  - after the snapshot creation, we update ownership to elastio driver
 //  - because of this, v5.13+ kernels did additional module_put() for our module at umount
 //
@@ -5211,12 +5211,14 @@ static int bdev_switch_ownership(const char __user *dir_name, int follow_flags, 
 	struct path path = {};
 	struct snap_device *dev;
 	struct block_device *bdev;
+	char bdev_name[BDEVNAME_SIZE];
 
 	if(!(follow_flags & UMOUNT_NOFOLLOW)) lookup_flags |= LOOKUP_FOLLOW;
 
 	ret = user_path_at(AT_FDCWD, dir_name, lookup_flags, &path);
 	if(ret){
 		//error finding path
+		ret = -EINVAL;
 		goto out;
 	}else if(path.dentry != path.mnt->mnt_root){
 		//path specified isn't a mount point
@@ -5231,6 +5233,8 @@ static int bdev_switch_ownership(const char __user *dir_name, int follow_flags, 
 		goto out;
 	}
 
+	bdevname(bdev, bdev_name);
+
 	tracer_for_each(dev, i) {
 		if (!dev) continue;
 		if (dev->sd_base_dev == bdev) break;
@@ -5238,7 +5242,7 @@ static int bdev_switch_ownership(const char __user *dir_name, int follow_flags, 
 
 	// not found
 	if (!dev) {
-		LOG_DEBUG("no active snap device found, skip");
+		LOG_DEBUG("no active snap device found for %s, skip ownership change", bdev_name);
 		ret = 0;
 		goto out;
 	}
@@ -5246,7 +5250,7 @@ static int bdev_switch_ownership(const char __user *dir_name, int follow_flags, 
 	switch (ownership) {
 		// umount
 		case OWNERSHIP_TO_PARENT:
-			LOG_DEBUG("Restoring bdev ownership");
+			LOG_DEBUG("restoring ownership over %s", bdev_name);
 #ifdef USE_BDOPS_SUBMIT_BIO
 			__tracer_transition_tracing(NULL, dev->sd_base_dev, dev->sd_orig_ops, NULL);
 #else
@@ -5255,7 +5259,7 @@ static int bdev_switch_ownership(const char __user *dir_name, int follow_flags, 
 			break;
 		// mount
 		case OWNERSHIP_TO_DRIVER:
-			LOG_DEBUG("Re-gaining bdev ownership");
+			LOG_DEBUG("re-gaining ownership over %s", bdev_name);
 #ifdef USE_BDOPS_SUBMIT_BIO
 			__tracer_transition_tracing(dev, dev->sd_base_dev, dev->sd_tracing_ops, NULL);
 #else
@@ -5264,6 +5268,7 @@ static int bdev_switch_ownership(const char __user *dir_name, int follow_flags, 
 			break;
 		default:
 			ret = -EINVAL;
+			LOG_ERROR(ret, "invalid ownership mode specified");
 			goto out;
 	}
 
