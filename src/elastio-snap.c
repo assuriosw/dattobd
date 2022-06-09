@@ -5217,19 +5217,19 @@ static int bdev_switch_ownership(const char __user *dir_name, int follow_flags, 
 
 	ret = user_path_at(AT_FDCWD, dir_name, lookup_flags, &path);
 	if(ret){
-		//error finding path
 		ret = -EINVAL;
+		LOG_DEBUG("error finding path");
 		goto out;
 	}else if(path.dentry != path.mnt->mnt_root){
-		//path specified isn't a mount point
 		ret = -ENODEV;
+		LOG_DEBUG("path specified isn't a mount point");
 		goto out;
 	}
 
 	bdev = path.mnt->mnt_sb->s_bdev;
 	if(!bdev){
-		//path specified isn't mounted on a block device
 		ret = -ENODEV;
+		LOG_DEBUG("path specified isn't mounted on a block device");
 		goto out;
 	}
 
