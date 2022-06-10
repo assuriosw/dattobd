@@ -19,6 +19,7 @@
 
 static void print_help(int status){
 	printf("Usage:\n");
+	// TODO: update help message
 	printf("\telioctl setup-snapshot [-c <cache size>] [-f fallocate] <block device> <cow file> <minor>\n");
 	printf("\telioctl reload-snapshot [-c <cache size>] <block device> <cow file> <minor>\n");
 	printf("\telioctl reload-incremental [-c <cache size>] <block device> <cow file> <minor>\n");
@@ -101,10 +102,12 @@ static int handle_setup_snap(int argc, char **argv){
 	int ret, c;
 	unsigned int minor;
 	unsigned long cache_size = 0, fallocated_space = 0;
+	unsigned int mem_mapping = 0;
 	char *bdev, *cow;
 
 	//get cache size and fallocated space params, if given
-	while((c = getopt(argc, argv, "c:f:")) != -1){
+	//and mem_mapping, if given
+	while((c = getopt(argc, argv, "c:f:m:")) != -1){
 		switch(c){
 		case 'c':
 			ret = parse_ul(optarg, &cache_size);
@@ -112,6 +115,10 @@ static int handle_setup_snap(int argc, char **argv){
 			break;
 		case 'f':
 			ret = parse_ul(optarg, &fallocated_space);
+			if(ret) goto error;
+			break;
+		case 'm':
+			ret = parse_ui(optarg, &mem_mapping);
 			if(ret) goto error;
 			break;
 		default:
@@ -131,7 +138,7 @@ static int handle_setup_snap(int argc, char **argv){
 	ret = parse_ui(argv[optind + 2], &minor);
 	if(ret) goto error;
 
-	return elastio_snap_setup_snapshot(minor, bdev, cow, fallocated_space, cache_size);
+	return elastio_snap_setup_snapshot(minor, bdev, cow, fallocated_space, cache_size, mem_mapping);
 
 error:
 	perror("error interpreting setup snapshot parameters");
@@ -259,13 +266,18 @@ static int handle_transition_snap(int argc, char **argv){
 	int ret, c;
 	unsigned int minor;
 	unsigned long fallocated_space = 0;
+	unsigned int mem_mapping = 0;
 	char *cow;
 
 	//get cache size and fallocated space params, if given
-	while((c = getopt(argc, argv, "f:")) != -1){
+	while((c = getopt(argc, argv, "f:m:")) != -1){
 		switch(c){
 		case 'f':
 			ret = parse_ul(optarg, &fallocated_space);
+			if(ret) goto error;
+			break;
+		case 'm':
+			ret = parse_ui(optarg, &mem_mapping);
 			if(ret) goto error;
 			break;
 		default:
@@ -284,7 +296,7 @@ static int handle_transition_snap(int argc, char **argv){
 	ret = parse_ui(argv[optind + 1], &minor);
 	if(ret) goto error;
 
-	return elastio_snap_transition_snapshot(minor, cow, fallocated_space);
+	return elastio_snap_transition_snapshot(minor, cow, fallocated_space, mem_mapping);
 
 error:
 	perror("error interpreting transition to snapshot parameters");

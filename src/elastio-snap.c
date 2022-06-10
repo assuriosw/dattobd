@@ -1086,6 +1086,7 @@ struct cow_manager{
 struct snap_device{
 	unsigned int sd_minor; //minor number of the snapshot
 	unsigned long sd_state; //current state of the snapshot
+	unsigned int sd_allow_mem_mapping; //whether or not to return EIO on read snap bios when an active snap in a failed state
 	unsigned long sd_cow_state; //current state of cow file
 	unsigned long sd_falloc_size; //space allocated to the cow file (in megabytes)
 	unsigned long sd_cache_size; //maximum cache size (in bytes)
@@ -1326,7 +1327,7 @@ error:
 	return ret;
 }
 
-static int get_setup_params(const struct setup_params __user *in, unsigned int *minor, char **bdev_name, char **cow_path, unsigned long *fallocated_space, unsigned long *cache_size){
+static int get_setup_params(const struct setup_params __user *in, unsigned int *minor, char **bdev_name, char **cow_path, unsigned long *fallocated_space, unsigned long *cache_size, unsigned int *allow_mem_mapping){
 	int ret;
 	struct setup_params params;
 
@@ -1359,6 +1360,7 @@ static int get_setup_params(const struct setup_params __user *in, unsigned int *
 	*minor = params.minor;
 	*fallocated_space = params.fallocated_space;
 	*cache_size = params.cache_size;
+	*allow_mem_mapping = params.allow_mem_mapping;
 	return 0;
 
 error:
@@ -4544,12 +4546,14 @@ static void tracer_destroy(struct snap_device *dev){
 	__tracer_destroy_base_dev(dev);
 }
 
-static int tracer_setup_active_snap(struct snap_device *dev, unsigned int minor, const char *bdev_path, const char *cow_path, unsigned long fallocated_space, unsigned long cache_size){
+static int tracer_setup_active_snap(struct snap_device *dev, unsigned int minor, const char *bdev_path, const char *cow_path, unsigned long fallocated_space, unsigned long cache_size, unsigned int allow_mem_mapping){
 	int ret;
 
 	set_bit(SNAPSHOT, &dev->sd_state);
 	set_bit(ACTIVE, &dev->sd_state);
 	clear_bit(UNVERIFIED, &dev->sd_state);
+
+	dev->sd_allow_mem_mapping = allow_mem_mapping;
 
 	//setup base device
 	ret = __tracer_setup_base_dev(dev, bdev_path);
@@ -4838,10 +4842,11 @@ static int __verify_bdev_writable(const char *bdev_path, int *out){
 	return 0;
 }
 
-static int __ioctl_setup(unsigned int minor, const char *bdev_path, const char *cow_path, unsigned long fallocated_space, unsigned long cache_size, int is_snap, int is_reload){
+static int __ioctl_setup(unsigned int minor, const char *bdev_path, const char *cow_path, unsigned long fallocated_space, unsigned long cache_size, unsigned int allow_mem_mapping, int is_snap, int is_reload){
 	int ret, is_mounted;
 	struct snap_device *dev = NULL;
 
+	// TODO: update message for setup snap and transition to snap with the mem map value
 	LOG_DEBUG("received %s %s ioctl - %u : %s : %s", (is_reload)? "reload" : "setup", (is_snap)? "snap" : "inc", minor, bdev_path, cow_path);
 
 	//verify that the minor number is valid
@@ -4869,7 +4874,7 @@ static int __ioctl_setup(unsigned int minor, const char *bdev_path, const char *
 
 	//route to the appropriate setup function
 	if(is_snap){
-		if(is_mounted) ret = tracer_setup_active_snap(dev, minor, bdev_path, cow_path, fallocated_space, cache_size);
+		if(is_mounted) ret = tracer_setup_active_snap(dev, minor, bdev_path, cow_path, fallocated_space, cache_size, allow_mem_mapping);
 		else ret = tracer_setup_unverified_snap(dev, minor, bdev_path, cow_path, cache_size);
 	}else{
 		if(!is_mounted) ret = tracer_setup_unverified_inc(dev, minor, bdev_path, cow_path, cache_size);
@@ -4889,9 +4894,10 @@ error:
 	if(dev) kfree(dev);
 	return ret;
 }
-#define ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size) __ioctl_setup(minor, bdev_path, cow_path, fallocated_space, cache_size, 1, 0)
-#define ioctl_reload_snap(minor, bdev_path, cow_path, cache_size) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, 1, 1)
-#define ioctl_reload_inc(minor, bdev_path, cow_path, cache_size) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, 0, 1)
+#define ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size, allow_mem_mapping) __ioctl_setup(minor, bdev_path, cow_path, fallocated_space, cache_size, allow_mem_mapping, 1, 0)
+// TODO: think do I need to add allow_mem_mapping real value from userspace to the funcs below instead of 0
+#define ioctl_reload_snap(minor, bdev_path, cow_path, cache_size) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, 0, 1, 1)
+#define ioctl_reload_inc(minor, bdev_path, cow_path, cache_size) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, 0, 0, 1)
 
 static int ioctl_destroy(unsigned int minor){
 	int ret;
@@ -5056,7 +5062,7 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 	char *bdev_path = NULL;
 	char *cow_path = NULL;
 	struct elastio_snap_info *info = NULL;
-	unsigned int minor = 0;
+	unsigned int minor = 0, allow_mem_mapping = 0;
 	unsigned long fallocated_space = 0, cache_size = 0;
 
 	LOG_DEBUG("ioctl command received: %d", cmd);
@@ -5065,10 +5071,10 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 	switch(cmd){
 	case IOCTL_SETUP_SNAP:
 		//get params from user space
-		ret = get_setup_params((struct setup_params __user *)arg, &minor, &bdev_path, &cow_path, &fallocated_space, &cache_size);
+		ret = get_setup_params((struct setup_params __user *)arg, &minor, &bdev_path, &cow_path, &fallocated_space, &cache_size, &allow_mem_mapping);
 		if(ret) break;
 
-		ret = ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size);
+		ret = ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size, allow_mem_mapping);
 		if(ret) break;
 
 		elastio_snap_wait_for_release(snap_devices[minor]);
@@ -5118,10 +5124,10 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 		break;
 	case IOCTL_TRANSITION_SNAP:
 		//get params from user space
-		ret = get_transition_snap_params((struct transition_snap_params __user *)arg, &minor, &cow_path, &fallocated_space);
+		ret = get_transition_snap_params((struct transition_snap_params __user *)arg, &minor, &cow_path, &fallocated_space, &allow_mem_mapping);
 		if(ret) break;
 
-		ret = ioctl_transition_snap(minor, cow_path, fallocated_space);
+		ret = ioctl_transition_snap(minor, cow_path, fallocated_space, allow_mem_mapping);
 		if(ret) break;
 
 		break;
