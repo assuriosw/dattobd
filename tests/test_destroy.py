@@ -63,6 +63,7 @@ class TestDestroy(DeviceTestCase):
         self.assertFalse(os.path.exists(self.snap_device))
         self.assertIsNone(elastio_snap.info(self.minor))
 
+    @unittest.skipIf(os.getenv('TEST_FS') == "xfs", "Broken on XFS. See https://github.com/elastio/elastio-snap/issues/138")
     def test_destroy_unverified_snapshot(self):
         util.unmount(self.mount)
         self.addCleanup(util.mount, self.device, self.mount)
@@ -72,6 +73,7 @@ class TestDestroy(DeviceTestCase):
         self.assertFalse(os.path.exists(self.snap_device))
         self.assertIsNone(elastio_snap.info(self.minor))
 
+    @unittest.skipIf(os.getenv('TEST_FS') == "xfs", "Broken on XFS. See https://github.com/elastio/elastio-snap/issues/138")
     def test_destroy_unverified_incremental(self):
         util.unmount(self.mount)
         self.addCleanup(util.mount, self.device, self.mount)
