@@ -28,7 +28,7 @@ def dd(ifile, ofile, count, **kwargs):
     for k, v in kwargs.items():
         cmd.append("{}={}".format(k, v))
 
-    subprocess.check_call(cmd, timeout=20)
+    subprocess.check_call(cmd, timeout=30)
 
 
 def md5sum(path):
@@ -61,4 +61,4 @@ def mkfs(device, fs="ext4"):
     else:
         cmd = ["mkfs." + fs, "-F", device]
 
-    subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+    subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40)
