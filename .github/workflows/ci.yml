@@ -107,8 +107,11 @@ jobs:
           vagrant ssh ${{env.INSTANCE_NAME}} -c 'sudo make uninstall'
         working-directory: ${{env.BOX_DIR}}
 
-      - name: Ignore XFS tests on Debian 8
-        if: "${{ matrix.distro == 'debian8' }}"
+      # FIXME: enable tests on XFS for all distros.
+      # See https://github.com/elastio/elastio-snap/issues/139 about Debian 8
+      # See https://github.com/elastio/elastio-snap/issues/138 about Ubuntu 22.04
+      - name: Ignore XFS tests
+        if: "${{ matrix.distro == 'debian8' || matrix.distro == 'ubuntu2204' }}"
         run:
           echo FS="ext2 ext3 ext4" >> $GITHUB_ENV
 
