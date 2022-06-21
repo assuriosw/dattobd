@@ -92,26 +92,33 @@ def assemble_mirror_lvm(devices, seed):
     cmd += partitions
     subprocess.check_call(cmd, timeout=10)
 
-    # 4. Create logical volume with mirroring.  The command looks like 'lvcreate -L 230MB -m1 -n testmirror_lv volgroup_mirror'
+    # 4. Create logical volume with mirroring.  The command looks like 'lvcreate -L 230MB -m1 -n vg_mirror lv_mirror'
     dev_size = dev_size_mb(devices[1])
     log_vol_size = str(dev_size - int(dev_size/10)) + "MB"
     cmd = ["lvcreate", "-L", log_vol_size, "-m1", "-n", logical_vol, vol_group]
     subprocess.check_call(cmd, timeout=10)
     lvm_dev = "/dev/" + vol_group + "/" + logical_vol
-    return lvm_dev
+
+    # 5. Convert LVM logical volume name to the kernel bdev name like /dev/vg_mirror22/lv_mirror22 to the /dev/dm-4 or so
+    cmd = ["readlink", "-f", lvm_dev]
+    return subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8")
 
 
 def disassemble_mirror_lvm(lvm_device):
-    # 1. Disable LVM.  The command looks like 'lvchange -an /dev/vg_mirror22/lv_mirror22'
+    # 0. Preperation. Convert /dev/dm-X kernel bdev name or any kind of the LVM device name to the /dev/mapper/vg_name-lv_name
+    cmd = ["find", "-L", "/dev/mapper", "-samefile", lvm_device]
+    lvm_device = subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8")
+
+    # 1. Disable LVM.  The command looks like 'lvchange -an /dev/mapper/vg_mirror22-lv_mirror22'
     cmd = ["lvchange", "-an", lvm_device]
     subprocess.check_call(cmd, timeout=10)
 
-    # 2. Delete LVM volume.  The command looks like 'lvremove /dev/vg_mirror22/lv_mirror22'
+    # 2. Delete LVM volume.  The command looks like 'lvremove /dev/mapper/vg_mirror22-lv_mirror22'
     cmd = ["lvremove", "-f", lvm_device]
     subprocess.check_call(cmd, timeout=10)
 
     # 3. Disable volume group.  The command looks like 'vgremove vg_mirror22'
-    vol_group = lvm_device.replace("/dev/", "").split("/")[0]
+    vol_group = lvm_device.replace("/dev/mapper/", "").split("-")[0]
     cmd = ["vgremove", vol_group]
     subprocess.check_call(cmd, timeout=10)
 
