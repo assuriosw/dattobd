@@ -123,9 +123,29 @@ def disassemble_mirror_lvm(lvm_device):
     subprocess.check_call(cmd, timeout=10)
 
 
-def assemble_mirror_raid(devices):
-    return "not implemented"
+def assemble_mirror_raid(devices, seed):
+    # 1. Create RAID partitions
+    partitions=[]
+    for device in devices:
+        cmd = ["parted", "--script", device, "mklabel gpt"]
+        subprocess.check_call(cmd, timeout=10)
+        cmd = ["parted", "--script", device, "mkpart 'RAID' 0% 100%"]
+        subprocess.check_call(cmd, timeout=10)
+        cmd = ["parted", "--script", device, "set 1 raid on"]
+        subprocess.check_call(cmd, timeout=10)
+
+        cmd = ["lsblk", device, "-l", "-o", "NAME", "-n"]
+        partitions.append("/dev/" + subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8").split("\n")[-1])
+
+    # 2. Create RAID 1 array.
+    raid_dev = "/dev/md" + str(seed)
+    cmd = ["mdadm", "--create", "--quiet", "--auto=yes", "--force", "--metadata=0.90", raid_dev, "--level=1", "--raid-devices=" + str(len(partitions))]
+    cmd += partitions
+    subprocess.check_call(cmd, timeout=10)
+
+    return raid_dev
 
 
 def disassemble_mirror_raid(raid_device):
-    return "not implemented"
+    cmd = ["mdadm", "--stop", raid_device]
+    return subprocess.check_call(cmd, timeout=10)

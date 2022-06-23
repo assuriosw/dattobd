@@ -42,7 +42,7 @@ class DeviceTestCase(unittest.TestCase):
         elif os.getenv('LVM'):
             cls.device = util.assemble_mirror_lvm(cls.devices, cls.minor)
         elif os.getenv('RAID'):
-            cls.device = util.assemble_mirror_raid(cls.devices)
+            cls.device = util.assemble_mirror_raid(cls.devices, cls.minor)
 
         cls.fs = os.getenv('TEST_FS', 'ext4')
         util.mkfs(cls.device, cls.fs)
@@ -58,7 +58,7 @@ class DeviceTestCase(unittest.TestCase):
             util.disassemble_mirror_lvm(cls.device)
 
         if os.getenv('RAID'):
-            util.disassemble_mirror_lvm(cls.device)
+            util.disassemble_mirror_raid(cls.device)
 
         # Destroy loopback devices and unlink their storage
         if not os.getenv('TEST_DEVICES'):
