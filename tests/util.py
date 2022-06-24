@@ -76,7 +76,12 @@ def get_last_partition(disk):
     # but sometimes the order is random
     cmd = ["lsblk", disk, "-l", "-o", "NAME", "-n"]
     disk_and_parts = subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8").splitlines()
+
+    print("lsblk output")
+    print(disk_and_parts)
+
     disk_and_parts.sort()
+    print("device: " + disk_and_parts[-1])
     # We need to take last item from the sorted list, which is partition for sure
     return "/dev/" + disk_and_parts[-1]
 
