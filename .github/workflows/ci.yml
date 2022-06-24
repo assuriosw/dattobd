@@ -89,6 +89,16 @@ jobs:
         run: vagrant ssh ${{env.INSTANCE_NAME}} -c 'sudo rm /etc/profile.d/enable-llvm-toolset.sh'
         working-directory: ${{env.BOX_DIR}}
 
+      - name: Install LVM and RAID tools
+        if: "${{ matrix.distro != 'debian8' }}"
+        run: vagrant ssh ${{env.INSTANCE_NAME}} -c
+             'if $(which apt-get >/dev/null 2>&1); then
+               sudo apt-get install -y lvm2 mdadm;
+             else
+               sudo yum install -y lvm2 mdadm;
+             fi'
+        working-directory: ${{env.BOX_DIR}}
+
       - name: Build packages
         run: vagrant ssh ${{env.INSTANCE_NAME}} -c 'make ${PKG_TYPE}'
         working-directory: ${{env.BOX_DIR}}
