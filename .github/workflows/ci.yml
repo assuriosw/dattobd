@@ -132,6 +132,7 @@ jobs:
         timeout-minutes: 1
 
       - name: Run tests on LVM (loop device)
+        if: "${{ matrix.distro != 'debian8' }}"
         run: |
           for fs in ${FS[*]}; do
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -f $fs --lvm"
@@ -142,6 +143,7 @@ jobs:
         timeout-minutes: 10
 
       - name: Run tests on RAID (loop device)
+        if: "${{ matrix.distro != 'debian8' }}"
         run: |
           for fs in ${FS[*]}; do
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -f $fs --raid"
@@ -190,6 +192,7 @@ jobs:
         timeout-minutes: 10
 
       - name: Run tests on LVM (qcow2 disk)
+        if: "${{ matrix.distro != 'debian8' }}"
         run: |
           for fs in ${FS[*]}; do
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 -f $fs --lvm"
@@ -198,6 +201,7 @@ jobs:
         timeout-minutes: 10
 
       - name: Run tests on RAID (qcow2 disk)
+        if: "${{ matrix.distro != 'debian8' }}"
         run: |
           for fs in ${FS[*]}; do
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 -f $fs --raid"
