@@ -131,12 +131,42 @@ jobs:
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 1
 
-      - name: Attach qcow2 disk
+      - name: Run tests on LVM (loop device)
+        run: |
+          for fs in ${FS[*]}; do
+            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -f $fs --lvm"
+          done
+        working-directory: ${{env.BOX_DIR}}
+        # For now tests are taking 10-20 seconds per 1 fs on amd64 and about 2 minutes on arm64. But they can hang.
+        # 10 minutes seems to be reasonable timeout.
+        timeout-minutes: 10
+
+      - name: Run tests on RAID (loop device)
+        run: |
+          for fs in ${FS[*]}; do
+            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -f $fs --raid"
+          done
+        working-directory: ${{env.BOX_DIR}}
+        # For now tests are taking 10-20 seconds per 1 fs on amd64 and about 2 minutes on arm64. But they can hang.
+        # 10 minutes seems to be reasonable timeout.
+        timeout-minutes: 10
+
+      - name: Show dmesg
+        if: always()
+        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "cat tests/dmesg.log; sudo dmesg -c"
+        working-directory: ${{env.BOX_DIR}}
+        timeout-minutes: 1
+
+      - name: Attach qcow2 disks
         run: |
           ARCH=$(uname -m)
-          qemu-img create -f qcow2 ${TEST_IMAGE} 1G
+          TEST_IMAGES=(${TEST_IMAGES})
+          TEST_DRIVES=(${TEST_DRIVES})
           [ ${ARCH} != "x86_64" ] && VIRSH_FLAGS="--config" || true
-          virsh attach-disk --domain ${BOX_DIR##*/}_${INSTANCE_NAME} --source ${TEST_IMAGE} --target vdb --driver qemu --subdriver qcow2 --targetbus virtio ${VIRSH_FLAGS-}
+          for i in ${!TEST_IMAGES[*]}; do
+            qemu-img create -f qcow2 ${TEST_IMAGES[i]} 1G
+            virsh attach-disk --domain ${BOX_DIR##*/}_${INSTANCE_NAME} --source ${TEST_IMAGES[i]} --target ${TEST_DRIVES[i]} --driver qemu --subdriver qcow2 --targetbus virtio ${VIRSH_FLAGS-}
+          done
           # ARM64 boxes don't support "hot plug" w/o reboot
           if [ ${ARCH} != "x86_64" ]; then
             virsh destroy --domain ${BOX_DIR##*/}_${INSTANCE_NAME}
@@ -146,7 +176,9 @@ jobs:
               sleep 1
             done
           fi
-          vagrant ssh ${{env.INSTANCE_NAME}} -c 'echo -e "n\np\n\n\n\nw" | sudo fdisk /dev/vdb'
+          for drive in ${TEST_DRIVES[@]}; do
+            vagrant ssh ${{env.INSTANCE_NAME}} -c "echo -e \"n\\np\\n\\n\\n\\nw\" | sudo fdisk /dev/$drive"
+          done
         working-directory: ${{env.BOX_DIR}}
 
       - name: Run tests (qcow2 disk)
@@ -157,19 +189,38 @@ jobs:
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 10
 
+      - name: Run tests on LVM (qcow2 disk)
+        run: |
+          for fs in ${FS[*]}; do
+            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 -f $fs --lvm"
+          done
+        working-directory: ${{env.BOX_DIR}}
+        timeout-minutes: 10
+
+      - name: Run tests on RAID (qcow2 disk)
+        run: |
+          for fs in ${FS[*]}; do
+            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 -f $fs --raid"
+          done
+        working-directory: ${{env.BOX_DIR}}
+        timeout-minutes: 10
+
       - name: Show dmesg
         if: always()
-        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "sudo dmesg -c"
+        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "cat tests/dmesg.log; sudo dmesg -c"
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 1
 
-      - name: Detach external drive
+      - name: Detach external drives
         if: always()
         run: |
-          if virsh domblklist ${BOX_DIR##*/}_${INSTANCE_NAME} --details | grep "file" | awk '{ print $NF }' | grep ${TEST_IMAGE} ; then
-              virsh detach-disk --domain ${BOX_DIR##*/}_${INSTANCE_NAME} ${TEST_IMAGE}
-          fi
-          rm -f ${TEST_IMAGE}
+          TEST_IMAGES=(${TEST_IMAGES})
+          for test_image in ${TEST_IMAGES[@]}; do
+            if virsh domblklist ${BOX_DIR##*/}_${INSTANCE_NAME} --details | grep "file" | awk '{ print $NF }' | grep ${test_image} ; then
+                virsh detach-disk --domain ${BOX_DIR##*/}_${INSTANCE_NAME} ${test_image}
+            fi
+            rm -f ${TEST_IMAGE}
+          done
 
       - name: Upload artifacts
         run: |
