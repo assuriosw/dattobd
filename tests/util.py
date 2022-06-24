@@ -96,6 +96,8 @@ def assemble_mirror_lvm(devices, seed):
         subprocess.check_call(cmd, timeout=10)
         cmd = ["parted", "--script", device, "set 1 lvm on"]
         subprocess.check_call(cmd, timeout=10)
+        cmd = ["partprobe", device]
+        subprocess.check_call(cmd, timeout=10)
         partitions.append(get_last_partition(device))
 
     # 2. Create physical volume.  The command looks like 'pvcreate /dev/sdb1 /dev/sdc1'
@@ -150,6 +152,8 @@ def assemble_mirror_raid(devices, seed):
         cmd = ["parted", "--script", device, "mkpart 'RAID' 0% 100%"]
         subprocess.check_call(cmd, timeout=10)
         cmd = ["parted", "--script", device, "set 1 raid on"]
+        subprocess.check_call(cmd, timeout=10)
+        cmd = ["partprobe", device]
         subprocess.check_call(cmd, timeout=10)
         partitions.append(get_last_partition(device))
 
