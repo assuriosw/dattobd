@@ -221,8 +221,8 @@ BuildArch:       noarch
 %endif
 
 %if 0%{?debian}
-%if ( "%{_arch}" != "x86_64" && "%{_arch}" != "amd64" ) && ( 0%{?debian} == 11 )
-Requires:        linux-image-`uname -r`-dbg
+%if ( "%{_arch}" != "x86_64" && "%{_arch}" != "amd64" ) && ( %{debian} == 11 )
+Requires:        linux-image-%(uname -r)-dbg
 %endif
 %endif
 
