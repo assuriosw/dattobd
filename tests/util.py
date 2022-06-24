@@ -63,8 +63,23 @@ def mkfs(device, fs="ext4"):
 
     subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40)
 
+
 def dev_size_mb(device):
     return int(subprocess.check_output("blockdev --getsize64 %s" % device, shell=True))//1024**2
+
+
+# This method finds name of the last partition of the disk
+def get_last_partition(disk):
+    # The output of this command 'lsblk /dev/loop0 -l -o NAME -n' is something like
+    # loop0
+    # loop0p1
+    # but sometimes the order is random
+    cmd = ["lsblk", disk, "-l", "-o", "NAME", "-n"]
+    disk_and_parts = subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8").splitlines()
+    disk_and_parts.sort()
+    # We need to take last item from the sorted list, which is partition for sure
+    return "/dev/" + disk_and_parts[-1]
+
 
 def assemble_mirror_lvm(devices, seed):
     # 1. Create LVM partitions
@@ -76,9 +91,7 @@ def assemble_mirror_lvm(devices, seed):
         subprocess.check_call(cmd, timeout=10)
         cmd = ["parted", "--script", device, "set 1 lvm on"]
         subprocess.check_call(cmd, timeout=10)
-
-        cmd = ["lsblk", device, "-l", "-o", "NAME", "-n"]
-        partitions.append("/dev/" + subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8").split("\n")[-1])
+        partitions.append(get_last_partition(device))
 
     # 2. Create physical volume.  The command looks like 'pvcreate /dev/sdb1 /dev/sdc1'
     cmd = ["pvcreate"]
@@ -133,9 +146,7 @@ def assemble_mirror_raid(devices, seed):
         subprocess.check_call(cmd, timeout=10)
         cmd = ["parted", "--script", device, "set 1 raid on"]
         subprocess.check_call(cmd, timeout=10)
-
-        cmd = ["lsblk", device, "-l", "-o", "NAME", "-n"]
-        partitions.append("/dev/" + subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8").split("\n")[-1])
+        partitions.append(get_last_partition(device))
 
     # 2. Create RAID 1 array.
     raid_dev = "/dev/md" + str(seed)
