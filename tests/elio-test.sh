@@ -33,13 +33,13 @@ while [ "$1" != "" ]; do
     case $1 in
         -d | --device)      shift && TEST_DEVICES+=($1) ;;
         -f | --filesystem)  shift && export TEST_FS=$1 ;;
-        -l | --lvm)         shift && export LVM=mirror ;;
-        -r | --raid)        shift && export RAID=mirror ;;
+        -l | --lvm)         export LVM=mirror ;;
+        -r | --raid)        export RAID=mirror ;;
         -h | --help)        usage && exit ;;
         *)                  echo "Wrong arguments!"
                             usage && exit 15 ;;
     esac
-        shift
+    shift
 done
 
 if [ -n "$LVM" ] && [ -n "$RAID" ]; then
