@@ -27,8 +27,8 @@ MODULE_VERSION(ELASTIO_SNAP_VERSION);
 #define LOG_ERROR(error, fmt, args...) printk(KERN_ERR "elastio-snap: " fmt ": %d\n", ## args, error)
 #define PRINT_BIO(text, bio) LOG_DEBUG(text ": sect = %llu size = %u", (unsigned long long)bio_sector(bio), bio_size(bio) / 512)
 
-/*********************************REDEFINED FUNCTIONS*******************************/
 #include <linux/delay.h>
+#include <linux/fiemap.h>
 
 #ifdef HAVE_UUID_H
 #include <linux/uuid.h>
@@ -1025,6 +1025,8 @@ struct snap_device{
 	struct cow_manager *sd_cow; //cow manager
 	char *sd_cow_path; //cow file path
 	struct inode *sd_cow_inode; //cow file inode
+	struct fiemap_extent *sd_cow_extents; //cow file extents
+	unsigned int sd_cow_ext_cnt; //cow file extents count
 #ifdef USE_BDOPS_SUBMIT_BIO
 	struct block_device_operations *sd_orig_ops; //block device's original operations sructure with the submit bio function
 	struct block_device_operations *sd_tracing_ops; //block device's operations sructure, copy of the original one, but with the submit bio function used for tracing
@@ -1225,7 +1227,7 @@ error:
 	return ret;
 }
 
-static int get_setup_params(const struct setup_params __user *in, unsigned int *minor, char **bdev_name, char **cow_path, unsigned long *fallocated_space, unsigned long *cache_size){
+static int get_setup_params(const struct setup_params __user *in, unsigned int *minor, char **bdev_name, char **cow_path, unsigned long *fallocated_space, unsigned long *cache_size, __user uint8_t **cow_ext_buf, unsigned long *cow_ext_buf_size){
 	int ret;
 	struct setup_params params;
 
@@ -1258,6 +1260,8 @@ static int get_setup_params(const struct setup_params __user *in, unsigned int *
 	*minor = params.minor;
 	*fallocated_space = params.fallocated_space;
 	*cache_size = params.cache_size;
+	*cow_ext_buf = params.cow_ext_buf;
+	*cow_ext_buf_size = params.cow_ext_buf_size;
 	return 0;
 
 error:
@@ -1270,6 +1274,8 @@ error:
 	*minor = 0;
 	*fallocated_space = 0;
 	*cache_size = 0;
+	*cow_ext_buf = NULL;
+	*cow_ext_buf_size = 0;
 	return ret;
 }
 
@@ -3827,6 +3833,12 @@ static int __tracer_destroy_cow(struct snap_device *dev, int close_method){
 			task_work_flush();
 		}
 	}
+	
+	if (dev->sd_cow_extents) {
+		kfree(dev->sd_cow_extents);
+		dev->sd_cow_extents = NULL;
+	}
+	dev->sd_cow_ext_cnt = 0;
 
 	return ret;
 }
@@ -3845,10 +3857,21 @@ static int file_is_on_bdev(const struct file *file, struct block_device *bdev) {
 	return ret;
 }
 
-static int __tracer_setup_cow(struct snap_device *dev, struct block_device *bdev, const char *cow_path, sector_t size, unsigned long fallocated_space, unsigned long cache_size, const uint8_t *uuid, uint64_t seqid, int open_method){
+static int __tracer_setup_cow(struct snap_device *dev, struct block_device *bdev, const char *cow_path, sector_t size, unsigned long fallocated_space, unsigned long cache_size,
+__user uint8_t *cow_ext_buf,  unsigned long cow_ext_buf_size, const uint8_t *uuid, uint64_t seqid, int open_method){
 	int ret;
 	uint64_t max_file_size;
 	char bdev_name[BDEVNAME_SIZE];
+	
+	struct fiemap_extent_info fiemap_info;
+	unsigned int fiemap_mapped_extents_size, i_ext;
+	struct fiemap_extent *extent;
+	int (*fiemap)(struct inode *, struct fiemap_extent_info *, u64 start, u64 len);
+	
+	//uint64_t len;
+
+	MAYBE_UNUSED(cow_ext_buf);
+	MAYBE_UNUSED(cow_ext_buf_size);
 
 	bdevname(bdev, bdev_name);
 
@@ -3894,6 +3917,41 @@ static int __tracer_setup_cow(struct snap_device *dev, struct block_device *bdev
 		//find the cow file's inode number
 		LOG_DEBUG("finding cow file inode");
 		dev->sd_cow_inode = elastio_snap_get_dentry(dev->sd_cow->filp)->d_inode;
+		
+		if (open_method == 0)
+		{
+			// get cow file extents
+			fiemap = dev->sd_cow_inode->i_op->fiemap;
+			if (fiemap) {
+				fiemap_info.fi_flags = FIEMAP_FLAG_SYNC;
+				fiemap_info.fi_extents_mapped = 0;
+				fiemap_info.fi_extents_max = do_div(cow_ext_buf_size, sizeof(struct fiemap_extent));
+				fiemap_info.fi_extents_start = (struct fiemap_extent __user *)cow_ext_buf;
+				
+				ret = fiemap(dev->sd_cow_inode, &fiemap_info, 0, FIEMAP_MAX_OFFSET);
+				
+				LOG_DEBUG("fiemap for cow file (ret %d), extents %u (max %u)", ret,
+					fiemap_info.fi_extents_mapped, fiemap_info.fi_extents_max);
+					
+				if (!ret && fiemap_info.fi_extents_mapped > 0) {
+					if (dev->sd_cow_extents) kfree(dev->sd_cow_extents);
+					fiemap_mapped_extents_size = fiemap_info.fi_extents_mapped * sizeof(struct fiemap_extent);
+					dev->sd_cow_extents = kmalloc(fiemap_mapped_extents_size, GFP_KERNEL);
+					if (dev->sd_cow_extents) {
+						ret = copy_from_user(dev->sd_cow_extents, cow_ext_buf, fiemap_mapped_extents_size);
+						if (!ret)
+						{
+							dev->sd_cow_ext_cnt = fiemap_info.fi_extents_mapped;
+							// debug output cow file extents
+							extent = dev->sd_cow_extents;
+							for (i_ext = 0; i_ext < fiemap_info.fi_extents_mapped; ++i_ext, ++extent) {
+								LOG_DEBUG("   cow file extent: log 0x%llx, phy 0x%llx, len %llu", extent->fe_logical, extent->fe_physical, extent->fe_length);
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	return 0;
@@ -3903,10 +3961,10 @@ error:
 	if(open_method != 3) __tracer_destroy_cow_free(dev);
 	return ret;
 }
-#define __tracer_setup_cow_new(dev, bdev, cow_path, size, fallocated_space, cache_size, uuid, seqid) __tracer_setup_cow(dev, bdev, cow_path, size, fallocated_space, cache_size, uuid, seqid, 0)
-#define __tracer_setup_cow_reload_snap(dev, bdev, cow_path, size, cache_size) __tracer_setup_cow(dev, bdev, cow_path, size, 0, cache_size, NULL, 0, 1)
-#define __tracer_setup_cow_reload_inc(dev, bdev, cow_path, size, cache_size) __tracer_setup_cow(dev, bdev, cow_path, size, 0, cache_size, NULL, 0, 2)
-#define __tracer_setup_cow_reopen(dev, bdev, cow_path) __tracer_setup_cow(dev, bdev, cow_path, 0, 0, 0, NULL, 0, 3)
+#define __tracer_setup_cow_new(dev, bdev, cow_path, size, fallocated_space, cache_size, cow_ext_buf, cow_ext_buf_size, uuid, seqid) __tracer_setup_cow(dev, bdev, cow_path, size, fallocated_space, cache_size, cow_ext_buf, cow_ext_buf_size, uuid, seqid, 0)
+#define __tracer_setup_cow_reload_snap(dev, bdev, cow_path, size, cache_size) __tracer_setup_cow(dev, bdev, cow_path, size, 0, cache_size, NULL, 0, NULL, 0, 1)
+#define __tracer_setup_cow_reload_inc(dev, bdev, cow_path, size, cache_size) __tracer_setup_cow(dev, bdev, cow_path, size, 0, cache_size, NULL, 0, NULL, 0, 2)
+#define __tracer_setup_cow_reopen(dev, bdev, cow_path) __tracer_setup_cow(dev, bdev, cow_path, 0, 0, 0, NULL, 0, NULL, 0, 3)
 
 static void __tracer_copy_cow(const struct snap_device *src, struct snap_device *dest){
 	dest->sd_cow = src->sd_cow;
@@ -4283,7 +4341,8 @@ static void tracer_destroy(struct snap_device *dev){
 	__tracer_destroy_base_dev(dev);
 }
 
-static int tracer_setup_active_snap(struct snap_device *dev, unsigned int minor, const char *bdev_path, const char *cow_path, unsigned long fallocated_space, unsigned long cache_size){
+static int tracer_setup_active_snap(struct snap_device *dev, unsigned int minor, const char *bdev_path, const char *cow_path, unsigned long fallocated_space, unsigned long cache_size,
+__user uint8_t *cow_ext_buf,  unsigned long cow_ext_buf_size){
 	int ret;
 
 	set_bit(SNAPSHOT, &dev->sd_state);
@@ -4295,7 +4354,7 @@ static int tracer_setup_active_snap(struct snap_device *dev, unsigned int minor,
 	if(ret) goto error;
 
 	//setup the cow manager
-	ret = __tracer_setup_cow_new(dev, dev->sd_base_dev, cow_path, dev->sd_size, fallocated_space, cache_size, NULL, 1);
+	ret = __tracer_setup_cow_new(dev, dev->sd_base_dev, cow_path, dev->sd_size, fallocated_space, cache_size, cow_ext_buf, cow_ext_buf_size, NULL, 1);
 	if(ret) goto error;
 
 	//setup the cow path
@@ -4451,7 +4510,7 @@ static int tracer_active_inc_to_snap(struct snap_device *old_dev, const char *co
 	__tracer_copy_base_dev(old_dev, dev);
 
 	//setup the cow manager
-	ret = __tracer_setup_cow_new(dev, dev->sd_base_dev, cow_path, dev->sd_size, fallocated_space, dev->sd_cache_size, old_dev->sd_cow->uuid, old_dev->sd_cow->seqid + 1);
+	ret = __tracer_setup_cow_new(dev, dev->sd_base_dev, cow_path, dev->sd_size, fallocated_space, dev->sd_cache_size, NULL, 0, old_dev->sd_cow->uuid, old_dev->sd_cow->seqid + 1);
 	if(ret) goto error;
 
 	//setup the cow path
@@ -4584,7 +4643,7 @@ static int __verify_bdev_writable(const char *bdev_path, int *out){
 	return 0;
 }
 
-static int __ioctl_setup(unsigned int minor, const char *bdev_path, const char *cow_path, unsigned long fallocated_space, unsigned long cache_size, int is_snap, int is_reload){
+static int __ioctl_setup(unsigned int minor, const char *bdev_path, const char *cow_path, unsigned long fallocated_space, unsigned long cache_size, __user uint8_t *cow_ext_buf,  unsigned long cow_ext_buf_size, int is_snap, int is_reload){
 	int ret, is_mounted;
 	struct snap_device *dev = NULL;
 
@@ -4615,7 +4674,7 @@ static int __ioctl_setup(unsigned int minor, const char *bdev_path, const char *
 
 	//route to the appropriate setup function
 	if(is_snap){
-		if(is_mounted) ret = tracer_setup_active_snap(dev, minor, bdev_path, cow_path, fallocated_space, cache_size);
+		if(is_mounted) ret = tracer_setup_active_snap(dev, minor, bdev_path, cow_path, fallocated_space, cache_size, cow_ext_buf, cow_ext_buf_size);
 		else ret = tracer_setup_unverified_snap(dev, minor, bdev_path, cow_path, cache_size);
 	}else{
 		if(!is_mounted) ret = tracer_setup_unverified_inc(dev, minor, bdev_path, cow_path, cache_size);
@@ -4635,9 +4694,9 @@ error:
 	if(dev) kfree(dev);
 	return ret;
 }
-#define ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size) __ioctl_setup(minor, bdev_path, cow_path, fallocated_space, cache_size, 1, 0)
-#define ioctl_reload_snap(minor, bdev_path, cow_path, cache_size) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, 1, 1)
-#define ioctl_reload_inc(minor, bdev_path, cow_path, cache_size) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, 0, 1)
+#define ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size, cow_ext_buf, cow_ext_buf_size) __ioctl_setup(minor, bdev_path, cow_path, fallocated_space, cache_size, cow_ext_buf, cow_ext_buf_size, 1, 0)
+#define ioctl_reload_snap(minor, bdev_path, cow_path, cache_size) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, NULL, 0, 1, 1)
+#define ioctl_reload_inc(minor, bdev_path, cow_path, cache_size) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, NULL, 0, 0, 1)
 
 static int ioctl_destroy(unsigned int minor){
 	int ret;
@@ -4801,7 +4860,8 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 	char *cow_path = NULL;
 	struct elastio_snap_info *info = NULL;
 	unsigned int minor = 0;
-	unsigned long fallocated_space = 0, cache_size = 0;
+	unsigned long fallocated_space = 0, cache_size = 0, cow_ext_buf_size = 0;
+	__user uint8_t *cow_ext_buf = NULL;
 
 	LOG_DEBUG("ioctl command received: %d", cmd);
 	mutex_lock(&ioctl_mutex);
@@ -4809,10 +4869,10 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 	switch(cmd){
 	case IOCTL_SETUP_SNAP:
 		//get params from user space
-		ret = get_setup_params((struct setup_params __user *)arg, &minor, &bdev_path, &cow_path, &fallocated_space, &cache_size);
+		ret = get_setup_params((struct setup_params __user *)arg, &minor, &bdev_path, &cow_path, &fallocated_space, &cache_size, &cow_ext_buf, &cow_ext_buf_size);
 		if(ret) break;
 
-		ret = ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size);
+		ret = ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size, cow_ext_buf, cow_ext_buf_size);
 		if(ret) break;
 
 		elastio_snap_wait_for_release(snap_devices[minor]);
