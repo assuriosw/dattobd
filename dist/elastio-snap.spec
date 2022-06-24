@@ -222,6 +222,7 @@ BuildArch:       noarch
 
 %if 0%{?debian}
 %if ( "%{_arch}" != "x86_64" && "%{_arch}" != "amd64" ) && ( %{debian} == 11 )
+# Please refer to https://github.com/elastio/devboxes/pull/230
 Requires:        linux-image-%(uname -r)-dbg
 %endif
 %endif
