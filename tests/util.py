@@ -7,7 +7,6 @@
 #
 
 import hashlib
-import os
 import subprocess
 
 
@@ -47,7 +46,7 @@ def settle(timeout=20):
 
 
 def loop_create(path):
-    cmd = ["losetup", "--find", "--show", path]
+    cmd = ["losetup", "--find", "--show", "--partscan", path]
     return subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8")
 
 
@@ -97,7 +96,6 @@ def assemble_mirror_lvm(devices, seed):
         subprocess.check_call(cmd, timeout=10)
         cmd = ["parted", "--script", device, "set 1 lvm on"]
         subprocess.check_call(cmd, timeout=10)
-        os.sync()
         cmd = ["partprobe", device]
         subprocess.check_call(cmd, timeout=10)
         partitions.append(get_last_partition(device))
@@ -155,7 +153,6 @@ def assemble_mirror_raid(devices, seed):
         subprocess.check_call(cmd, timeout=10)
         cmd = ["parted", "--script", device, "set 1 raid on"]
         subprocess.check_call(cmd, timeout=10)
-        os.sync()
         cmd = ["partprobe", device]
         subprocess.check_call(cmd, timeout=10)
         partitions.append(get_last_partition(device))
