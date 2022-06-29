@@ -7,6 +7,7 @@ def prodBranch = "master"
 
 def map_branches = [
 	'^master$': 'focal-agent',
+	'^staging.*': 'focal-agent-stg',
 	'^develop$': 'focal-agent-dev',
 	'.*': 'focal-agent-dev',
 	]
