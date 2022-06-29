@@ -49,6 +49,20 @@ pipeline
 				}
 			}
 		}
+		stage('Upload to staging repo')
+		{
+			when
+			{
+				branch pattern: '^staging.*', comparator: "REGEXP"
+			}
+			steps
+			{
+				catchError(buildResult: 'FAILURE', stageResult: 'FAILURE')
+				{
+					deployDeb dir: "build-results", map_repo: map_branches, user: "rbrepo", agent: "rep-agent"
+				}
+			}
+		}
 		stage('Upload to production repo')
 		{
 			when
