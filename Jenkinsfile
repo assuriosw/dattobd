@@ -7,9 +7,12 @@ def prodBranch = "master"
 
 def map_branches = [
 	'^master$': 'focal-agent',
-	'^staging.*': 'focal-agent-stg',
 	'^develop$': 'focal-agent-dev',
 	'.*': 'focal-agent-dev',
+	]
+
+def map_branches_stg = [
+	'^staging.*': 'focal-agent-stg',
 	]
 
 pipeline
@@ -59,7 +62,7 @@ pipeline
 			{
 				catchError(buildResult: 'FAILURE', stageResult: 'FAILURE')
 				{
-					deployDeb dir: "build-results", map_repo: map_branches, user: "rbrepo", agent: "rep-agent"
+					deployDeb dir: "build-results", map_repo: map_branches_stg, user: "rbrepo", agent: "rep-agent"
 				}
 			}
 		}
