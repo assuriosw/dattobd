@@ -33,10 +33,6 @@ pipeline
 		}
 		stage('Upload to repo')
 		{
-			when
-			{
-				branch pattern: '^(develop|master|staging).*', comparator: "REGEXP"
-			}
 			steps
 			{
 				catchError(buildResult: 'FAILURE', stageResult: 'FAILURE')
