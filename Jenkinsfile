@@ -2,13 +2,10 @@
 
 @Library('jenkins-utils-lib') _
 
-def devBranch = "develop"
-def prodBranch = "master"
-
 def map_branches = [
 	'^master$': 'focal-agent',
+	'^staging.*': 'focal-agent-stg',
 	'^develop$': 'focal-agent-dev',
-	'.*': 'focal-agent-dev',
 	]
 
 pipeline
@@ -34,30 +31,12 @@ pipeline
 				}
 			}
 		}
-		stage('Upload to dev repo')
+		stage('Upload to repo')
 		{
-			when
-			{
-				branch devBranch
-			}
 			steps
 			{
 				catchError(buildResult: 'FAILURE', stageResult: 'FAILURE')
 				{
-					deployDeb dir: "build-results", map_repo: map_branches, user: "rbrepo", agent: "rep-agent"
-				}
-			}
-		}
-		stage('Upload to production repo')
-		{
-			when
-			{
-				branch prodBranch
-			}
-			steps
-			{
-				catchError(buildResult: 'FAILURE', stageResult: 'FAILURE')
-				{	
 					deployDeb dir: "build-results", map_repo: map_branches, user: "rbrepo", agent: "rep-agent"
 				}
 			}
