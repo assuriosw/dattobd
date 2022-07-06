@@ -61,7 +61,7 @@ def mkfs(device, fs="ext4"):
     else:
         cmd = ["mkfs." + fs, "-F", device]
 
-    subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40)
+    subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
 
 
 def dev_size_mb(device):
