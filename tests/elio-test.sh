@@ -32,7 +32,7 @@ usage()
 while [ "$1" != "" ]; do
     case $1 in
         -d | --device)      shift && TEST_DEVICES+=($1) ;;
-        -f | --filesystem)  shift && export TEST_FS=$1 ;;
+        -f | --filesystem)  shift && TEST_FS=$1 ;;
         -l | --lvm)         export LVM=mirror ;;
         -r | --raid)        export RAID=mirror ;;
         -h | --help)        usage && exit ;;
@@ -63,9 +63,16 @@ if [ -n "$TEST_DEVICE" ] && ! lsblk $TEST_DEVICE >/dev/null 2>&1; then
     exit 1
 fi
 
-if [ -n "$TEST_FS" ] && ! echo ${filesystems[*]} | grep -w -q $TEST_FS; then
-    echo "The script's argumet $TEST_FS seems to be not a supported file system, one of $(echo ${filesystems[*]} | sed "s/ /, /g")."
+if [ -n "${TEST_FS+set}" ] && [ -z "${TEST_FS}" ]; then
+    echo "The script's argumet --filesystem is empty."
     exit 1
+fi
+
+if [ -n "$TEST_FS" ] && ! echo ${filesystems[*]} | grep -w -q $TEST_FS; then
+    echo "The script's argumet \"--filesystem $TEST_FS\" seems to be not a supported file system, one of $(echo ${filesystems[*]} | sed "s/ /, /g")."
+    exit 1
+else
+    export TEST_FS
 fi
 
 packman="apt-get"
