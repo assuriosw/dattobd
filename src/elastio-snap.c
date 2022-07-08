@@ -814,6 +814,21 @@ __kernel_ulong_t si_mem_available(void)
 }
 #endif
 
+#ifndef HAVE_BIO_FREE_PAGES
+static void bio_free_pages(struct bio *bio){
+	bio_iter_t iter;
+	bio_iter_bvec_t bvec;
+	struct page *bv_page;
+
+	bio_for_each_segment(bvec, bio, iter) {
+		bv_page = bio_iter_page(bio, iter);
+		if (bv_page) {
+			__free_page(bv_page);
+		}
+	}
+}
+#endif
+
 /*********************************MACRO/PARAMETER DEFINITIONS*******************************/
 
 
@@ -2751,16 +2766,7 @@ static void bio_destructor_snap_dev(struct bio *bio){
 #endif
 
 static void bio_free_clone(struct bio *bio){
-	bio_iter_t iter;
-	bio_iter_bvec_t bvec;
-	struct page *bv_page;
-
-	bio_for_each_segment(bvec, bio, iter) {
-		bv_page = bio_iter_page(bio, iter);
-		if (bv_page) {
-			__free_page(bv_page);
-		}
-	}
+	bio_free_pages(bio);
 	bio_put(bio);
 }
 
