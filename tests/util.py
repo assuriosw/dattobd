@@ -45,6 +45,16 @@ def settle(timeout=20):
     subprocess.check_call(cmd, timeout=(timeout + 10))
 
 
+def udev_start_exec_queue():
+    cmd = ["udevadm", "control", "--start-exec-queue"]
+    subprocess.check_call(cmd)
+
+
+def udev_stop_exec_queue():
+    cmd = ["udevadm", "control", "--stop-exec-queue"]
+    subprocess.check_call(cmd)
+
+
 def loop_create(path):
     cmd = ["losetup", "--find", "--show", "--partscan", path]
     return subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8")
@@ -155,14 +165,18 @@ def assemble_mirror_raid(devices, seed):
         partitions.append(get_last_partition(device))
 
     # 2. Create RAID 1 array.
+    udev_stop_exec_queue()
     raid_dev = "/dev/md" + str(seed)
     cmd = ["mdadm", "--create", "--quiet", "--auto=yes", "--force", "--metadata=0.90", raid_dev, "--level=1", "--raid-devices=" + str(len(partitions))]
     cmd += partitions
     subprocess.check_call(cmd, timeout=10)
+    udev_start_exec_queue()
 
     return raid_dev
 
 
 def disassemble_mirror_raid(raid_device):
+    udev_stop_exec_queue()
     cmd = ["mdadm", "--stop", raid_device]
-    return subprocess.check_call(cmd, timeout=10)
+    subprocess.check_call(cmd, timeout=10)
+    udev_start_exec_queue()
