@@ -43,14 +43,14 @@ while [ "$1" != "" ]; do
 done
 
 if [ -n "$LVM" ] && [ -n "$RAID" ]; then
-    echo "Please chouse one LVM or RAID configuration. Both aren't supported."
+    echo "Please choose one LVM or RAID configuration. Both at the same time aren't supported."
     exit 1
 fi
 
 if [ ${#test_devices[@]} -ne 0 ]; then
     for test_device in ${test_devices[@]}; do
         if ! lsblk $test_device >/dev/null 2>&1; then
-            echo "The script's argumet $test_device seems to be not a block device."
+            echo "The script's argument $test_device seems to be not a block device."
             exit 1
         fi
     done
@@ -64,12 +64,12 @@ if [ -n "$TEST_DEVICE" ] && ! lsblk $TEST_DEVICE >/dev/null 2>&1; then
 fi
 
 if [ -n "${TEST_FS+set}" ] && [ -z "${TEST_FS}" ]; then
-    echo "The script's argumet --filesystem is empty."
+    echo "The script's argument --filesystem is empty."
     exit 1
 fi
 
 if [ -n "$TEST_FS" ] && ! echo ${filesystems[*]} | grep -w -q $TEST_FS; then
-    echo "The script's argumet \"--filesystem $TEST_FS\" seems to be not a supported file system, one of $(echo ${filesystems[*]} | sed "s/ /, /g")."
+    echo "The script's argument \"--filesystem $TEST_FS\" seems to be not a supported file system, one of $(echo ${filesystems[*]} | sed "s/ /, /g")."
     exit 1
 else
     export TEST_FS
