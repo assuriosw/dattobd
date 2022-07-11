@@ -95,7 +95,13 @@ jobs:
              'if $(which apt-get >/dev/null 2>&1); then
                sudo apt-get install -y lvm2 mdadm;
              else
-               sudo yum install -y lvm2 mdadm;
+               # Fedora has rather weak mirrors. But we don`t want to have failing builds due to this.
+               for i in {1..5}; do
+                 sudo yum install -y lvm2 mdadm && break
+                 echo "Failed to install LVM and RAID packages. Retrying..."
+                 sleep 5
+               done
+               mdadm -V
              fi'
         working-directory: ${{env.BOX_DIR}}
 
