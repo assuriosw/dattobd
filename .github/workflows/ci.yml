@@ -161,7 +161,8 @@ jobs:
         timeout-minutes: 10
 
       - name: Run tests on RAID (loop device)
-        if: "${{ matrix.distro != 'debian8' }}"
+        # FIXME: enable tests on Debian 9 after resolution of #146
+        if: "${{ matrix.distro != 'debian8' && matrix.distro != 'debian9' }}"
         run: |
           for fs in ${FS[*]}; do
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -f $fs --raid"
@@ -209,20 +210,21 @@ jobs:
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 10
 
-      - name: Run tests on LVM (qcow2 disk)
+      - name: Run tests on LVM (qcow2 disks)
         if: "${{ matrix.distro != 'debian8' }}"
         run: |
           for fs in ${FS[*]}; do
-            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 -f $fs --lvm"
+            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 /dev/vdc1 -f $fs --lvm"
           done
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 10
 
-      - name: Run tests on RAID (qcow2 disk)
-        if: "${{ matrix.distro != 'debian8' }}"
+      - name: Run tests on RAID (qcow2 disks)
+        # FIXME: enable tests on Debian 9 after resolution of #146
+        if: "${{ matrix.distro != 'debian8' && matrix.distro != 'debian9' }}"
         run: |
           for fs in ${FS[*]}; do
-            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 -f $fs --raid"
+            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 /dev/vdc1 -f $fs --raid"
           done
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 10
