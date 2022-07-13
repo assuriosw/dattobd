@@ -40,7 +40,7 @@ class TestTransitionToIncremental(DeviceTestCase):
 
     @unittest.skipIf((os.getenv('LVM') or os.getenv('RAID'))
                      and os.getenv('TEST_FS') == "xfs"
-                     and int(platform.release().split(".")[0]) == 5 and int(platform.release().split(".")[1]) >= 8,
+                     and int(platform.release().split(".")[0]) == 5,
                      "Broken on LVM/raid with XFS, kernels 5.9+ (see #143) and kernel 5.8 (see #145)")
     def test_transition_fs_sync_cow_full(self):
         scratch = "{}/scratch".format(self.mount)
@@ -69,7 +69,7 @@ class TestTransitionToIncremental(DeviceTestCase):
 
     @unittest.skipIf((os.getenv('LVM') or os.getenv('RAID'))
                      and os.getenv('TEST_FS') == "xfs"
-                     and int(platform.release().split(".")[0]) == 5 and int(platform.release().split(".")[1]) >= 8,
+                     and int(platform.release().split(".")[0]) == 5,
                      "Broken on LVM/raid with XFS, kernels 5.9+ (see #143) and kernel 5.8 (see #145)")
     def test_transition_mod_sync_cow_full(self):
         scratch = "{}/scratch".format(self.mount)
