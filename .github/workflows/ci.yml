@@ -214,7 +214,7 @@ jobs:
         if: "${{ matrix.distro != 'debian8' }}"
         run: |
           for fs in ${FS[*]}; do
-            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 /dev/vdc1 -f $fs --lvm"
+            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 -d /dev/vdc1 -f $fs --lvm"
           done
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 10
@@ -224,7 +224,7 @@ jobs:
         if: "${{ matrix.distro != 'debian8' && matrix.distro != 'debian9' }}"
         run: |
           for fs in ${FS[*]}; do
-            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 /dev/vdc1 -f $fs --raid"
+            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 -d /dev/vdc1 -f $fs --raid"
           done
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 10
