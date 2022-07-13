@@ -55,15 +55,6 @@ def udev_stop_exec_queue():
     subprocess.check_call(cmd)
 
 
-def check_call_retry(cmd, retries, timeout=10):
-    for retry in range(retries):
-        rc = subprocess.run(cmd, timeout=timeout).returncode
-        if rc == 0:
-            break
-        elif retry + 1 == retries:
-            raise subprocess.CalledProcessError(rc, cmd, "Command failed " + str(retries) + "times")
-
-
 def loop_create(path):
     cmd = ["losetup", "--find", "--show", "--partscan", path]
     return subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8")
@@ -178,7 +169,7 @@ def assemble_mirror_raid(devices, seed):
     raid_dev = "/dev/md" + str(seed)
     cmd = ["mdadm", "--create", "--quiet", "--auto=yes", "--force", "--metadata=0.90", raid_dev, "--level=1", "--raid-devices=" + str(len(partitions))]
     cmd += partitions
-    check_call_retry(cmd, retries=3, timeout=10)
+    subprocess.check_call(cmd, timeout=10)
     udev_start_exec_queue()
 
     return raid_dev
@@ -187,5 +178,5 @@ def assemble_mirror_raid(devices, seed):
 def disassemble_mirror_raid(raid_device):
     udev_stop_exec_queue()
     cmd = ["mdadm", "--stop", raid_device]
-    check_call_retry(cmd, retries=3, timeout=10)
+    subprocess.check_call(cmd, timeout=10)
     udev_start_exec_queue()
