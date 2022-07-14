@@ -193,9 +193,13 @@ def assemble_mirror_raid(devices, seed):
         time.sleep(1)
         rc = subprocess.run(cmd, timeout=20).returncode
         udev_start_exec_queue()
-        if rc == 0:                 break
-        elif retry + 1 < retries:   for part in partitions: mdadm_zero_superblock(part)
-        elif retry + 1 == retries:  raise subprocess.CalledProcessError(rc, cmd, "Command failed " + str(retries) + "times")
+        if rc == 0:
+            break
+        elif retry + 1 < retries:
+            for part in partitions:
+                mdadm_zero_superblock(part)
+        elif retry + 1 == retries:
+            raise subprocess.CalledProcessError(rc, cmd, "Command failed " + str(retries) + "times")
 
     return raid_dev
 
