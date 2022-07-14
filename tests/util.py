@@ -91,20 +91,40 @@ def get_last_partition(disk):
     return "/dev/" + disk_and_parts[-1]
 
 
-def assemble_mirror_lvm(devices, seed):
-    # 1. Create LVM partitions
+def parted_create_lvm_raid_partitions(devices, kind):
+    if kind == "lvm":
+        part_type="LVM2"
+    elif kind == "raid":
+        part_type="RAID"
+    else:
+        raise ValueError("Wrong argument kind '" + kind + "' is not 'lvm' or 'raid'!")
+
+    settle()
     partitions=[]
     for device in devices:
         cmd = ["parted", "--script", device, "mklabel gpt"]
         subprocess.check_call(cmd, timeout=10)
-        cmd = ["parted", "--script", device, "mkpart 'LVM2' 0% 100%"]
-        subprocess.check_call(cmd, timeout=10)
-        cmd = ["parted", "--script", device, "set 1 lvm on"]
+        cmd = ["parted", "--script", device, "mkpart '" + part_type + "' 0% 100%"]
+        subprocess.check_call(cmd, timeout=30)
+        cmd = ["parted", "--script", device, "set 1 " + kind + " on"]
         subprocess.check_call(cmd, timeout=10)
         cmd = ["partprobe", device]
         subprocess.check_call(cmd, timeout=10)
         settle()
-        partitions.append(get_last_partition(device))
+        part = get_last_partition(device)
+        # mdadm rarely and randomly complains on create about superblock
+        # let's clean it up and do not care about return code
+        if kind == "raid":
+            cmd = ["mdadm", "--zero-superblock", part]
+            subprocess.run(cmd, timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        partitions.append(part)
+
+    return partitions
+
+
+def assemble_mirror_lvm(devices, seed):
+    # 1. Create LVM partitions
+    partitions = parted_create_lvm_raid_partitions(devices, "lvm")
 
     # 2. Create physical volume.  The command looks like 'pvcreate /dev/sdb1 /dev/sdc1'
     cmd = ["pvcreate"]
@@ -151,25 +171,14 @@ def disassemble_mirror_lvm(lvm_device):
 
 def assemble_mirror_raid(devices, seed):
     # 1. Create RAID partitions
-    partitions=[]
-    for device in devices:
-        cmd = ["parted", "--script", device, "mklabel gpt"]
-        subprocess.check_call(cmd, timeout=10)
-        cmd = ["parted", "--script", device, "mkpart 'RAID' 0% 100%"]
-        subprocess.check_call(cmd, timeout=10)
-        cmd = ["parted", "--script", device, "set 1 raid on"]
-        subprocess.check_call(cmd, timeout=10)
-        cmd = ["partprobe", device]
-        subprocess.check_call(cmd, timeout=10)
-        settle()
-        partitions.append(get_last_partition(device))
+    partitions = parted_create_lvm_raid_partitions(devices, "raid")
 
     # 2. Create RAID 1 array.
     udev_stop_exec_queue()
     raid_dev = "/dev/md" + str(seed)
     cmd = ["mdadm", "--create", "--quiet", "--auto=yes", "--force", "--metadata=0.90", raid_dev, "--level=1", "--raid-devices=" + str(len(partitions))]
     cmd += partitions
-    subprocess.check_call(cmd, timeout=10)
+    subprocess.check_call(cmd, timeout=20)
     udev_start_exec_queue()
 
     return raid_dev
@@ -177,6 +186,6 @@ def assemble_mirror_raid(devices, seed):
 
 def disassemble_mirror_raid(raid_device):
     udev_stop_exec_queue()
-    cmd = ["mdadm", "--stop", raid_device]
-    subprocess.check_call(cmd, timeout=10)
+    cmd = ["mdadm", "--stop", "--quiet", raid_device]
+    subprocess.check_call(cmd, timeout=30)
     udev_start_exec_queue()
