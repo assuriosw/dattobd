@@ -127,7 +127,7 @@ def parted_create_lvm_raid_partitions(devices, kind):
 def mdadm_zero_superblock(partition):
     cmd = ["mdadm", "--zero-superblock", partition]
     # We don't care about the possible errors
-    subprocess.run(cmd_cleanup, timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(cmd, timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def assemble_mirror_lvm(devices, seed):
