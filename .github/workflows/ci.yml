@@ -30,16 +30,12 @@ jobs:
         include:
           - distro: amazon2
             arch: arm64
-          # FIXME: CentOS 8 on ARM64 is not yet supported.
-          # See https://github.com/elastio/elastio-snap/issues/125 for more details.
-          #- distro: centos8
-          #  arch: arm64
+          - distro: centos8
+            arch: arm64
           - distro: debian10
             arch: arm64
-          # FIXME: Debian 11 on ARM64 is not yet supported.
-          # See https://github.com/elastio/elastio-snap/issues/124 for more details.
-          #- distro: debian11
-          #  arch: arm64
+          - distro: debian11
+            arch: arm64
           - distro: fedora35
             arch: arm64
           - distro: fedora36
@@ -145,7 +141,7 @@ jobs:
 
       - name: Show dmesg
         if: always()
-        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "sudo dmesg -c"
+        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "cat tests/dmesg.log; sudo dmesg -c"
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 1
 
@@ -159,6 +155,12 @@ jobs:
         # For now tests are taking 10-20 seconds per 1 fs on amd64 and about 2 minutes on arm64. But they can hang.
         # 10 minutes seems to be reasonable timeout.
         timeout-minutes: 10
+
+      - name: Show dmesg
+        if: always()
+        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "cat tests/dmesg.log; sudo dmesg -c"
+        working-directory: ${{env.BOX_DIR}}
+        timeout-minutes: 1
 
       - name: Run tests on RAID (loop device)
         # FIXME: enable tests on Debian 9 after resolution of #146
@@ -210,6 +212,12 @@ jobs:
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 10
 
+      - name: Show dmesg
+        if: always()
+        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "cat tests/dmesg.log; sudo dmesg -c"
+        working-directory: ${{env.BOX_DIR}}
+        timeout-minutes: 1
+
       - name: Run tests on LVM (qcow2 disks)
         if: "${{ matrix.distro != 'debian8' }}"
         run: |
@@ -218,6 +226,12 @@ jobs:
           done
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 10
+
+      - name: Show dmesg
+        if: always()
+        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "cat tests/dmesg.log; sudo dmesg -c"
+        working-directory: ${{env.BOX_DIR}}
+        timeout-minutes: 1
 
       - name: Run tests on RAID (qcow2 disks)
         # FIXME: enable tests on Debian 9 after resolution of #146
