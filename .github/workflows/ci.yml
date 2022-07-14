@@ -76,11 +76,6 @@ jobs:
           sleep 5
         working-directory: ${{env.BOX_DIR}}
 
-      - name: Install linux-image-dbg
-        if: "${{ matrix.distro == 'debian11' && matrix.arch == 'arm64' }}"
-        run: vagrant ssh ${{env.INSTANCE_NAME}} -c 'sudo apt-get install -y linux-image-$(uname -r)-dbg'
-        working-directory: ${{env.BOX_DIR}}
-
       # Amazon 2 has installed devtoolset-8 which upgrades GCC from 7.3.1 to 8.3.1.
       # The new gcc doesn't compile rpm packages properly, because of the /usr/lib/rpm/redhat/macros provided
       # by the package system-rpm-config-9.1.0-76.amzn2.0.13.noarch. And this macros has compilation flags applicable
