@@ -76,6 +76,15 @@ jobs:
           sleep 5
         working-directory: ${{env.BOX_DIR}}
 
+      # Please refer to https://github.com/elastio/devboxes/pull/230
+      - name: Download debug package for Debian 11
+        if: "${{ matrix.distro == 'debian11' && matrix.arch == 'arm64' }}"
+        run: |
+          vagrant ssh ${{env.INSTANCE_NAME}} -c '
+            sudo apt-get install -y linux-image-$(uname -r)-dbg' || true
+          sleep 5
+        working-directory: ${{env.BOX_DIR}}
+
       # Amazon 2 has installed devtoolset-8 which upgrades GCC from 7.3.1 to 8.3.1.
       # The new gcc doesn't compile rpm packages properly, because of the /usr/lib/rpm/redhat/macros provided
       # by the package system-rpm-config-9.1.0-76.amzn2.0.13.noarch. And this macros has compilation flags applicable
@@ -266,10 +275,15 @@ jobs:
           # We have to avoid a race condition when package like elastio-snap-dkms_X.XX.XX-1debian11_all.deb is uploaded from
           # 2 Debian 11 VMs amd64 and arm64 at the same time to the same location.
           [ $(uname -m) != "x86_64" ] && [ -f /etc/debian_version ] && excl_ptrn=$excl_ptrn",*_all.deb" || true
-          vagrant ssh ${{env.INSTANCE_NAME}} -c 'AWS_SECRET_ACCESS_KEY='"'$AWS_SECRET_ACCESS_KEY'"' repobuild/upload.sh \
+          vagrant ssh ${{env.INSTANCE_NAME}} -c '
+          if ! [[ ${SOURCE_BRANCH} =~ ^release ]] && ! [[ ${SOURCE_BRANCH} =~ ^master ]]; then \
+            tag="--tag elastio:dev=true"; \
+          fi; \
+          AWS_SECRET_ACCESS_KEY='"'$AWS_SECRET_ACCESS_KEY'"' repobuild/upload.sh \
             --source repobuild/artifacts/ \
             --bucket artifacts.assur.io \
             --target /linux/elastio-snap/${SOURCE_BRANCH}/${GITHUB_RUN_NUMBER}/${PKG_TYPE} \
+            ${tag} \
             --exclude '"'$excl_ptrn'"''
         working-directory: ${{env.BOX_DIR}}
 
@@ -291,10 +305,16 @@ jobs:
         run: echo $GITHUB_RUN_NUMBER > latest && cat latest | grep -E '^[0-9]+$'
 
       - name: Upload manifest
-        run: repobuild/upload.sh
-          --source latest
-          --bucket artifacts.assur.io
-          --target /linux/elastio-snap/$(.github/scripts/detect_branch.sh)
+        run: |
+          branch=$(.github/scripts/detect_branch.sh)
+          if ! [[ ${branch} =~ ^release ]] && ! [[ ${branch} =~ ^master ]]; then
+            tag="--tag elastio:dev=true"
+          fi
+          repobuild/upload.sh \
+            --source latest \
+            --bucket artifacts.assur.io \
+            --target /linux/elastio-snap/$branch \
+            ${tag}
 
   dispatch-packaging-repo:
     name: Trigger repo upload
