@@ -18,6 +18,9 @@ jobs:
       FS: ext2 ext3 ext4 xfs
 
     strategy:
+      # Do not cancel all jobs when one is failing. The CI of the driver is fast.
+      # But the fast failure hinders to observe possible errors on other distros.
+      fail-fast: false
       matrix:
         distro: [
           amazon2,
