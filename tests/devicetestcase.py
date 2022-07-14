@@ -38,7 +38,7 @@ class DeviceTestCase(unittest.TestCase):
                 # So, let's verify the difference of these random numbers )
                 while True:
                     ra = randint(0, 999)
-                    if not r or ra != r[-1]: break
+                    if not ra in r: break
                 r.append(ra)
                 cls.backing_stores.append("/tmp/disk_{0:03d}.img".format(r[i]))
                 util.dd("/dev/zero", cls.backing_stores[i], 256, bs="1M")
