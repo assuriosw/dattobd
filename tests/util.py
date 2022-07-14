@@ -102,6 +102,8 @@ def parted_create_lvm_raid_partitions(devices, kind):
     settle()
     partitions=[]
     for device in devices:
+        cmd = ["wipefs", "--all", "--force", "--quiet", device]
+        subprocess.check_call(cmd, timeout=10)
         cmd = ["parted", "--script", device, "mklabel gpt"]
         subprocess.check_call(cmd, timeout=10)
         cmd = ["parted", "--script", device, "mkpart '" + part_type + "' 0% 100%"]
@@ -114,9 +116,8 @@ def parted_create_lvm_raid_partitions(devices, kind):
         part = get_last_partition(device)
         # mdadm rarely and randomly complains on create about superblock
         # let's clean it up and do not care about return code
-        if kind == "raid":
-            cmd = ["mdadm", "--zero-superblock", part]
-            subprocess.run(cmd, timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        cmd = ["wipefs", "--all", "--force", "--quiet", part]
+        subprocess.check_call(cmd, timeout=10)
         partitions.append(part)
 
     return partitions
