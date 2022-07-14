@@ -8,6 +8,7 @@
 
 import hashlib
 import subprocess
+import time
 
 
 def mount(device, path, opts=None):
@@ -123,6 +124,12 @@ def parted_create_lvm_raid_partitions(devices, kind):
     return partitions
 
 
+def mdadm_zero_superblock(partition):
+    cmd = ["mdadm", "--zero-superblock", partition]
+    # We don't care about the possible errors
+    subprocess.run(cmd_cleanup, timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def assemble_mirror_lvm(devices, seed):
     # 1. Create LVM partitions
     partitions = parted_create_lvm_raid_partitions(devices, "lvm")
@@ -175,18 +182,29 @@ def assemble_mirror_raid(devices, seed):
     partitions = parted_create_lvm_raid_partitions(devices, "raid")
 
     # 2. Create RAID 1 array.
-    udev_stop_exec_queue()
+    #    udev control --stop-exec-queue and retries are workarounds for the mdadm's flacky issue, when it fails like this:
+    #    'mdadm: ADD_NEW_DISK for /dev/loop1p1 failed: Device or resource busy'
     raid_dev = "/dev/md" + str(seed)
     cmd = ["mdadm", "--create", "--quiet", "--auto=yes", "--force", "--metadata=0.90", raid_dev, "--level=1", "--raid-devices=" + str(len(partitions))]
     cmd += partitions
-    subprocess.check_call(cmd, timeout=20)
-    udev_start_exec_queue()
+    retries = 3
+    for retry in range(retries):
+        udev_stop_exec_queue()
+        time.sleep(1)
+        rc = subprocess.run(cmd, timeout=20).returncode
+        udev_start_exec_queue()
+        if rc == 0:                 break
+        elif retry + 1 < retries:   for part in partitions: mdadm_zero_superblock(part)
+        elif retry + 1 == retries:  raise subprocess.CalledProcessError(rc, cmd, "Command failed " + str(retries) + "times")
 
     return raid_dev
 
 
-def disassemble_mirror_raid(raid_device):
+def disassemble_mirror_raid(raid_device, devices):
     udev_stop_exec_queue()
     cmd = ["mdadm", "--stop", "--quiet", raid_device]
     subprocess.check_call(cmd, timeout=30)
     udev_start_exec_queue()
+    time.sleep(1)
+    for device in devices:
+        mdadm_zero_superblock(get_last_partition(device))

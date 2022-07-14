@@ -58,7 +58,7 @@ class DeviceTestCase(unittest.TestCase):
             util.disassemble_mirror_lvm(cls.device)
 
         if os.getenv('RAID'):
-            util.disassemble_mirror_raid(cls.device)
+            util.disassemble_mirror_raid(cls.device, cls.devices)
 
         # Destroy loopback devices and unlink their storage
         if not os.getenv('TEST_DEVICES'):
