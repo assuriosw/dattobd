@@ -32,7 +32,14 @@ class DeviceTestCase(unittest.TestCase):
         else:
             dev_count = 2 if os.getenv('LVM') or os.getenv('RAID') else 1
             for i in range(dev_count):
-                r.append(randint(0, 999))
+                # Unexpectedly randint can generate 2 same numbers in a row.
+                # As result, we'll have 2 loop devices with the same one file as backing store.
+                # And then mdadm will fail to create a mirror from these "2 different" loop devices, because 2nd will always race 'device busy' error.
+                # So, let's verify the difference of these random numbers )
+                while True:
+                    ra = randint(0, 999)
+                    if not r or ra != r[-1]: break
+                r.append(ra)
                 cls.backing_stores.append("/tmp/disk_{0:03d}.img".format(r[i]))
                 util.dd("/dev/zero", cls.backing_stores[i], 256, bs="1M")
                 cls.devices.append(util.loop_create(cls.backing_stores[i]))

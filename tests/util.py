@@ -196,6 +196,7 @@ def assemble_mirror_raid(devices, seed):
         if rc == 0:
             break
         elif retry + 1 < retries:
+            subprocess.run(["mdadm", "--stop", "--quiet", raid_dev], timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             for part in partitions:
                 mdadm_zero_superblock(part)
         elif retry + 1 == retries:
