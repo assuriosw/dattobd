@@ -158,7 +158,8 @@ jobs:
         timeout-minutes: 1
 
       - name: Run tests on LVM (loop device)
-        if: "${{ matrix.distro != 'debian8' }}"
+        # FIXME: Enable tests on all distros after resolution of #147, #143, #138
+        if: "${{ matrix.distro != 'debian8' && matrix.distro != 'debian11' && matrix.distro != 'ubuntu2204' && matrix.distro != 'fedora32' }}"
         run: |
           for fs in ${FS[*]}; do
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -f $fs --lvm"
@@ -175,8 +176,8 @@ jobs:
         timeout-minutes: 1
 
       - name: Run tests on RAID (loop device)
-        # FIXME: enable tests on Debian 9 after resolution of #146
-        if: "${{ matrix.distro != 'debian8' && matrix.distro != 'debian9' }}"
+        # FIXME: Enable tests on all distros after resolution of #146, #147, #143, #138
+        if: "${{ matrix.distro != 'debian8' && matrix.distro != 'debian9' && matrix.distro != 'debian11' && matrix.distro != 'ubuntu2204' && matrix.distro != 'fedora32' }}"
         run: |
           for fs in ${FS[*]}; do
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -f $fs --raid"
@@ -231,7 +232,8 @@ jobs:
         timeout-minutes: 1
 
       - name: Run tests on LVM (qcow2 disks)
-        if: "${{ matrix.distro != 'debian8' }}"
+        # FIXME: Enable tests on all distros after resolution of #147, #143, #138
+        if: "${{ matrix.distro != 'debian8' && matrix.distro != 'debian11' && matrix.distro != 'ubuntu2204' && matrix.distro != 'fedora32' }}"
         run: |
           for fs in ${FS[*]}; do
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 -d /dev/vdc1 -f $fs --lvm"
@@ -246,8 +248,8 @@ jobs:
         timeout-minutes: 1
 
       - name: Run tests on RAID (qcow2 disks)
-        # FIXME: enable tests on Debian 9 after resolution of #146
-        if: "${{ matrix.distro != 'debian8' && matrix.distro != 'debian9' }}"
+        # FIXME: Enable tests on all distros after resolution of #146, #147, #143, #138
+        if: "${{ matrix.distro != 'debian8' && matrix.distro != 'debian9' && matrix.distro != 'debian11' && matrix.distro != 'ubuntu2204' && matrix.distro != 'fedora32' }}"
         run: |
           for fs in ${FS[*]}; do
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 -d /dev/vdc1 -f $fs --raid"
