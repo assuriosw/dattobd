@@ -26,7 +26,7 @@ def unmount(path, retry_on_dev_busy=True):
     else:
         retries = 3
         for retry in range(retries):
-            p = subprocess.run(cmd, timeout=20, capture_output=True)
+            p = subprocess.run(cmd, timeout=20, stdout=PIPE, stderr=PIPE)
             if p.returncode == 0:
                 break
             elif retry + 1 < retries and "busy" not in p.stderr.decode():
