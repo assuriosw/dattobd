@@ -2982,32 +2982,29 @@ out:
 
 static int snap_handle_write_bio(const struct snap_device *dev, struct bio *bio){
 	int ret;
-	bio_iter_t iter;
-	bio_iter_bvec_t bvec;
+	struct bvec_iter_all iter;
+	struct bio_vec *bvec;
 	char *data;
 	sector_t start_block, end_block = SECTOR_TO_BLOCK(bio_sector(bio));
 
 	//iterate through the bio and handle each segment (which is guaranteed to be block aligned)
-	bio_for_each_segment(bvec, bio, iter){
+	bio_for_each_segment_all(bvec, bio, iter){
 		//find the start and end block
 		start_block = end_block;
-		end_block = start_block + (bio_iter_len(bio, iter) / COW_BLOCK_SIZE);
-
+		end_block = start_block + (bvec->bv_len / COW_BLOCK_SIZE);
 		//map the page into kernel space
-		data = kmap(bio_iter_page(bio, iter));
-
+		data = kmap(bvec->bv_page);
 		//loop through the blocks in the page
 		for(; start_block < end_block; start_block++){
 			//pas the block to the cow manager to be handled
 			ret = cow_write_current(dev->sd_cow, start_block, data);
 			if(ret){
-				kunmap(bio_iter_page(bio, iter));
+				kunmap(bvec->bv_page);
 				goto error;
 			}
 		}
-
 		//unmap the page
-		kunmap(bio_iter_page(bio, iter));
+		kunmap(bvec->bv_page);
 	}
 
 	return 0;
