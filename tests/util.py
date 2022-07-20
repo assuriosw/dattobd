@@ -8,6 +8,7 @@
 
 import hashlib
 import subprocess
+import sys
 import time
 
 
@@ -21,7 +22,8 @@ def mount(device, path, opts=None):
 
 def unmount(path, retry_on_dev_busy=True):
     cmd = ["umount", path]
-    if not retry_on_dev_busy:
+    # subprocess.run is introduced in Python 3.5
+    if not retry_on_dev_busy or sys.version_info <= (3, 5):
         subprocess.check_call(cmd, timeout=10)
     else:
         retries = 3
