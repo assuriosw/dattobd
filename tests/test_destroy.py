@@ -72,6 +72,10 @@ class TestDestroy(DeviceTestCase):
         self.assertFalse(os.path.exists(self.snap_device))
         self.assertIsNone(elastio_snap.info(self.minor))
 
+    @unittest.skipIf(os.getenv('TEST_FS') == "xfs"
+                     and int(platform.release().split(".")[0]) == 5
+                     and int(platform.release().split(".")[1]) == 15,
+                     "Broken Ubuntu 22.04 with kernel 5.15 (see #138)")
     def test_destroy_unverified_incremental(self):
         util.unmount(self.mount)
         self.addCleanup(util.mount, self.device, self.mount)
