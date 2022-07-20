@@ -161,9 +161,10 @@ jobs:
         timeout-minutes: 1
 
       - name: Run tests on LVM (loop device)
-        # And Debian 8 has reached EOL and has no lvm2 tools installed.
+        # Debian 8 has reached EOL and has no lvm2 tools installed.
         # But in theory we can enable tests on Debian 8 after resolution of #139.
-        if: "${{ matrix.distro != 'debian8' }}"
+        # FIXME: Enable tests on Ubuntu 20.04 after fix of #149
+        if: "${{ matrix.distro != 'debian8' && matrix.distro != 'ubuntu2004' }}"
         run: |
           for fs in ${FS[*]}; do
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -f $fs --lvm"
@@ -237,9 +238,10 @@ jobs:
         timeout-minutes: 1
 
       - name: Run tests on LVM (qcow2 disks)
-        # And Debian 8 has reached EOL and has no lvm2 tools installed.
+        # Debian 8 has reached EOL and has no lvm2 tools installed.
         # But in theory we can enable tests on Debian 8 after resolution of #139.
-        if: "${{ matrix.distro != 'debian8' }}"
+        # FIXME: Enable tests on Ubuntu 20.04 after fix of #149
+        if: "${{ matrix.distro != 'debian8' && matrix.distro != 'ubuntu2004' }}"
         run: |
           for fs in ${FS[*]}; do
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 -d /dev/vdc1 -f $fs --lvm"
