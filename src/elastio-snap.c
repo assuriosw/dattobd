@@ -2982,13 +2982,19 @@ out:
 
 static int snap_handle_write_bio(const struct snap_device *dev, struct bio *bio){
 	int ret;
-	struct bvec_iter_all iter;
-	struct bio_vec *bvec;
 	char *data;
 	sector_t start_block, end_block = SECTOR_TO_BLOCK(bio_sector(bio));
 
+#ifdef HAVE_BVEC_ITER_ALL
+	struct bvec_iter_all iter;
+	struct bio_vec *bvec;
 	//iterate through the bio and handle each segment (which is guaranteed to be block aligned)
-	bio_for_each_segment_all(bvec, bio, iter){
+	bio_for_each_segment_all(bvec, bio, iter) {
+#else
+	int i = 0;
+	struct bio_vec *bvec;
+	bio_for_each_segment_all(bvec, bio, i) {
+#endif
 		//find the start and end block
 		start_block = end_block;
 		end_block = start_block + (bvec->bv_len / COW_BLOCK_SIZE);
