@@ -19,9 +19,23 @@ def mount(device, path, opts=None):
     subprocess.check_call(cmd, timeout=10)
 
 
-def unmount(path):
+def unmount(path, retry_on_dev_busy=True):
     cmd = ["umount", path]
-    subprocess.check_call(cmd, timeout=10)
+    if not retry_on_dev_busy:
+        subprocess.check_call(cmd, timeout=10)
+    else:
+        retries = 3
+        for retry in range(retries):
+            p = subprocess.run(cmd, timeout=20, capture_output=True)
+            if p.returncode == 0:
+                break
+            elif retry + 1 < retries and "busy" not in p.stderr.decode():
+                print("Command umount " + path + " has failed (" + str(p.returncode) + "): " + p.stderr.decode())
+                raise subprocess.CalledProcessError(p.returncode, cmd, "Command failed")
+            elif retry + 1 == retries:
+                raise subprocess.CalledProcessError(p.returncode, cmd, "Command failed " + str(retries) + "times")
+            else:
+                time.sleep(1)
 
 
 def dd(ifile, ofile, count, **kwargs):
