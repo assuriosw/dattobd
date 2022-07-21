@@ -2991,6 +2991,12 @@ static int snap_handle_write_bio(const struct snap_device *dev, struct bio *bio)
 	char *data;
 	sector_t start_block, end_block = SECTOR_TO_BLOCK(bio_sector(bio));
 
+	/*
+	 * Previously we iterated using bio_for_each_segment(), which
+	 * caused problems in case if our bio was split by the system.
+	 * It is replaced with bio_for_each_segment_all() as we own the
+	 * bio and can guarantee that we have access to its bvecs
+	 */
 #ifdef HAVE_BVEC_ITER_ALL
 	struct bvec_iter_all iter;
 	struct bio_vec *bvec;
