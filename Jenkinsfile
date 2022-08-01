@@ -2,12 +2,6 @@
 
 @Library('jenkins-utils-lib') _
 
-def map_branches = [
-	'^master$': 'focal-agent',
-	'^staging.*': 'focal-agent-stg',
-	'^develop$': 'focal-agent-dev',
-	]
-
 pipeline
 {
 	agent
@@ -21,33 +15,43 @@ pipeline
 	}
 	stages
 	{
-		stage('Build package')
+		stage('Build bdsnap package')
 		{
-			steps
+			parallel
 			{
-				catchError(buildResult: 'FAILURE', stageResult: 'FAILURE')
+				stage('DEB')
 				{
-					sh "bash ./build.sh ${env.BUILD_NUMBER}"
+					steps
+					{
+						sh "bash ./build.sh ${env.BUILD_NUMBER} deb"
+						deployDeb dir: "build-results_deb", map_repo: pkg_map_branches('focal-agent'), user: "rbrepo", agent: "rep-rb"
+					}
 				}
-			}
-		}
-		stage('Upload to repo')
-		{
-			steps
-			{
-				catchError(buildResult: 'FAILURE', stageResult: 'FAILURE')
+				stage('RPM')
 				{
-					deployDeb dir: "build-results", map_repo: map_branches, user: "rbrepo", agent: "rep-agent"
+					steps
+					{
+						sh "bash ./build.sh ${env.BUILD_NUMBER} rpm"
+						deployRpm dir: "build-results_rpm", map_repo: pkg_map_branches('oopta'), user: "rbrepo", agent: "agent"
+					}
 				}
-			}
-		}
-
-		stage('Cleanup')
-		{
-			steps
-			{
-				deleteDir()
 			}
 		}
 	}
+	post
+	{
+		always
+		{
+			deleteDir()
+		}
+	}
+}
+
+def pkg_map_branches(String repo)
+{
+    return [
+	'^master$': repo,
+	'^staging.*': repo + '-stg',
+	'^develop$': repo + '-dev',
+	]
 }

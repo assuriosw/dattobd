@@ -23,7 +23,4 @@ USER user
 
 COPY --chown=user:user . /build_dir
 
-RUN cd build_dir && \
-	chmod +x entry.sh
-
-ENTRYPOINT ["/build_dir/entry.sh"]
+RUN chmod +x /build_dir/entry.sh

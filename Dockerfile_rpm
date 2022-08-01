@@ -1,0 +1,23 @@
+FROM centos:8
+
+ARG USER_ID
+ARG GROUP_ID
+
+RUN cd /etc/yum.repos.d/ && \
+	sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-* && \
+	sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+
+
+RUN yum install -y epel-release
+
+RUN yum install -y kernel-debug-devel \
+		dkms \
+		rpm-build \
+		rsync
+
+RUN groupadd -f --gid $GROUP_ID user && adduser --uid $USER_ID --gid $GROUP_ID user
+USER user
+
+COPY --chown=user:user . /build_dir
+
+RUN chmod +x /build_dir/entry.sh
