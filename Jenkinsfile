@@ -25,6 +25,7 @@ pipeline
 					{
 						sh "bash ./build.sh ${env.BUILD_NUMBER} deb"
 						deployDeb dir: "build-results_deb", map_repo: pkg_map_branches('focal-agent'), user: "rbrepo", agent: "rep-rb"
+						deployDeb dir: "build-results_deb", map_repo: pkg_map_branches('jammy-agent'), user: "rbrepo", agent: "rep-rb"
 					}
 				}
 				stage('RPM')
