@@ -4039,7 +4039,7 @@ static int __tracer_bioset_init(struct snap_device *dev){
 	if(!dev->sd_bioset) return -ENOMEM;
 	return 0;
 #else
-	return bioset_init(&dev->sd_bioset, BIO_SET_SIZE, BIO_SET_SIZE, BIOSET_NEED_BVECS);
+	return bioset_init(&dev->sd_bioset, 10000, 2, BIOSET_NEED_BVECS);
 #endif
 }
 
@@ -5598,8 +5598,8 @@ static asmlinkage long umount_hook(char __user *name, int flags){
 
 	kfree(buff_dev_name);
 
-	ret = handle_bdev_mount_nowrite(name, flags, &idx);
 	bdev_switch_ownership(name, flags, OWNERSHIP_TO_PARENT);
+	ret = handle_bdev_mount_nowrite(name, flags, &idx);
 
 #ifdef USE_ARCH_MOUNT_FUNCS
 	sys_ret = orig_umount(regs);
