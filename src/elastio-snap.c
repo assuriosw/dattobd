@@ -4039,7 +4039,7 @@ static int __tracer_bioset_init(struct snap_device *dev){
 	if(!dev->sd_bioset) return -ENOMEM;
 	return 0;
 #else
-	return bioset_init(&dev->sd_bioset, 10000, 2, BIOSET_NEED_BVECS);
+	return bioset_init(&dev->sd_bioset, BIO_SET_SIZE, BIO_SET_SIZE, BIOSET_NEED_BVECS);
 #endif
 }
 
