@@ -6,6 +6,7 @@
 # Additional contributions by Elastio Software, Inc are Copyright (C) 2020 Elastio Software Inc.
 #
 
+import sys
 import errno
 import os
 import subprocess
@@ -23,25 +24,25 @@ class TestSetup(DeviceTestCase):
         self.snap_device = "/dev/elastio-snap{}".format(self.minor)
 
     def test_setup_invalid_minor(self):
-        util.kmsg_log('== Running {} == '.format(__name__))
+        util.kmsg_log('== Running {} == '.format(sys._getframe(  ).f_code.co_name))
         self.assertEqual(elastio_snap.setup(1000, self.device, self.cow_full_path), errno.EINVAL)
         self.assertFalse(os.path.exists(self.snap_device))
         self.assertIsNone(elastio_snap.info(self.minor))
 
     def test_setup_volume_path_is_dir(self):
-        util.kmsg_log('== Running {} == '.format(__name__))
+        util.kmsg_log('== Running {} == '.format(sys._getframe(  ).f_code.co_name))
         self.assertEqual(elastio_snap.setup(self.minor, self.mount, self.cow_full_path), errno.ENOTBLK)
         self.assertFalse(os.path.exists(self.snap_device))
         self.assertIsNone(elastio_snap.info(self.minor))
 
     def test_setup_cow_file_path_is_dir(self):
-        util.kmsg_log('== Running {} == '.format(__name__))
+        util.kmsg_log('== Running {} == '.format(sys._getframe(  ).f_code.co_name))
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.mount), errno.EISDIR)
         self.assertFalse(os.path.exists(self.snap_device))
         self.assertIsNone(elastio_snap.info(self.minor))
 
     def test_setup_unmounted_volume(self):
-        util.kmsg_log('== Running {} == '.format(__name__))
+        util.kmsg_log('== Running {} == '.format(sys._getframe(  ).f_code.co_name))
         util.unmount(self.mount)
         self.addCleanup(util.mount, self.device, self.mount)
 
@@ -50,7 +51,7 @@ class TestSetup(DeviceTestCase):
         self.assertIsNone(elastio_snap.info(self.minor))
 
     def test_setup_readonly_volume(self):
-        util.kmsg_log('== Running {} == '.format(__name__))
+        util.kmsg_log('== Running {} == '.format(sys._getframe(  ).f_code.co_name))
         util.mount(self.device, self.mount, opts="remount,ro")
         self.addCleanup(util.mount, self.device, self.mount, opts="remount,rw")
 
@@ -59,7 +60,7 @@ class TestSetup(DeviceTestCase):
         self.assertIsNone(elastio_snap.info(self.minor))
 
     def test_setup_already_tracked_volume(self):
-        util.kmsg_log('== Running {} == '.format(__name__))
+        util.kmsg_log('== Running {} == '.format(sys._getframe(  ).f_code.co_name))
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
         self.addCleanup(elastio_snap.destroy, self.minor)
 
@@ -68,7 +69,7 @@ class TestSetup(DeviceTestCase):
         self.assertIsNotNone(elastio_snap.info(self.minor))
 
     def test_setup_volume(self):
-        util.kmsg_log('== Running {} == '.format(__name__))
+        util.kmsg_log('== Running {} == '.format(sys._getframe(  ).f_code.co_name))
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
         self.addCleanup(elastio_snap.destroy, self.minor)
 
@@ -84,7 +85,7 @@ class TestSetup(DeviceTestCase):
         self.assertEqual(snapdev["version"], 1)
 
     def test_setup_2_volumes(self):
-        util.kmsg_log('== Running {} == '.format(__name__))
+        util.kmsg_log('== Running {} == '.format(sys._getframe(  ).f_code.co_name))
         # Setup device #1 at the root volume
         minor = randint(0, 23)
         while minor == self.minor:
