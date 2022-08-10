@@ -22,16 +22,19 @@ class TestTransitionToIncremental(DeviceTestCase):
         self.cow_full_path = "{}/{}".format(self.mount, self.cow_file)
 
     def test_transition_nonexistent_snapshot(self):
+        util.kmsg_log('== Running {} == '.format(__name__))
         self.assertIsNone(elastio_snap.info(self.minor))
         self.assertEqual(elastio_snap.transition_to_incremental(self.minor), errno.ENOENT)
 
     def test_transition_active_snapshot(self):
+        util.kmsg_log('== Running {} == '.format(__name__))
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
         self.addCleanup(elastio_snap.destroy, self.minor)
 
         self.assertEqual(elastio_snap.transition_to_incremental(self.minor), 0)
 
     def test_transition_active_incremental(self):
+        util.kmsg_log('== Running {} == '.format(__name__))
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
         self.addCleanup(elastio_snap.destroy, self.minor)
 
@@ -39,6 +42,7 @@ class TestTransitionToIncremental(DeviceTestCase):
         self.assertEqual(elastio_snap.transition_to_incremental(self.minor), errno.EINVAL)
 
     def test_transition_fs_sync_cow_full(self):
+        util.kmsg_log('== Running {} == '.format(__name__))
         scratch = "{}/scratch".format(self.mount)
         falloc = 50
 
@@ -64,6 +68,7 @@ class TestTransitionToIncremental(DeviceTestCase):
         self.assertEqual(snapdev["state"], 3)
 
     def test_transition_mod_sync_cow_full(self):
+        util.kmsg_log('== Running {} == '.format(__name__))
         scratch = "{}/scratch".format(self.mount)
         falloc = 50
 

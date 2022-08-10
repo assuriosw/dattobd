@@ -25,6 +25,7 @@ class TestSnapshot(DeviceTestCase):
         self.snap_device = "/dev/elastio-snap{}".format(self.minor)
 
     def test_modify_origin(self):
+        util.kmsg_log('== Running {} == '.format(__name__))
         testfile = "{}/testfile".format(self.mount)
         snapfile = "{}/testfile".format(self.snap_mount)
 
@@ -53,6 +54,7 @@ class TestSnapshot(DeviceTestCase):
     @unittest.skipIf(os.getenv('TEST_FS') == "ext2" and int(platform.release().split(".", 1)[0]) < 4, "Broken on ext2, 3-rd kernels")
     @unittest.skipIf(os.getenv('TEST_FS') == "xfs", "Broken on XFS, due to ignored os.sync and due to #63.")
     def test_track_writes(self):
+        util.kmsg_log('== Running {} == '.format(__name__))
         testfile = "{}/testfile".format(self.mount)
 
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
@@ -74,6 +76,7 @@ class TestSnapshot(DeviceTestCase):
         self.assertGreater(end_nr, start_nr)
 
     def test_next_available_minor(self):
+        util.kmsg_log('== Running {} == '.format(__name__))
         self.assertEqual(elastio_snap.get_free_minor(), 0)
 
         # Explicitly use a minor of 0 for testing this function

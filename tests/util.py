@@ -11,6 +11,9 @@ import subprocess
 import sys
 import time
 
+def kmsg_log(string):
+    with open('/dev/kmsg', 'w') as f:
+        f.write(string)
 
 def mount(device, path, opts=None):
     cmd = ["mount", device, path]
