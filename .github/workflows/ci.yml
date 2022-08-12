@@ -117,8 +117,9 @@ jobs:
         run: |
           vagrant ssh ${{env.INSTANCE_NAME}} -c '
             if $(which apt-get >/dev/null 2>&1); then
+              export DEBIAN_FRONTEND=noninteractive
               sudo apt-get update
-              sudo apt-get install -y lvm2 mdadm
+              sudo -E apt-get install -y lvm2 mdadm
             else
               # Fedora has rather weak mirrors. But we do not want to have failing builds because of this.
               set +e
@@ -132,6 +133,7 @@ jobs:
             fi
           '
         working-directory: ${{env.BOX_DIR}}
+        timeout-minutes: 5
 
       - name: Build packages
         run: vagrant ssh ${{env.INSTANCE_NAME}} -c 'make ${PKG_TYPE}'
