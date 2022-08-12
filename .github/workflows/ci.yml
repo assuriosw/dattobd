@@ -92,8 +92,17 @@ jobs:
       - name: Reinstall xfsprogs on Debian 8
         if: "${{ matrix.distro == 'debian8' }}"
         run: |
-          vagrant ssh ${{env.INSTANCE_NAME}} -c 'sudo apt-get install --reinstall -y xfsprogs xfslibs-dev'
+          vagrant ssh ${{env.INSTANCE_NAME}} -c '
+            set +e
+            for i in {1..5}; do
+              sudo apt-get install --reinstall -y xfsprogs xfslibs-dev && break
+              echo "Failed to install xfsprogs xfslibs-dev packages. Retrying..."
+              sleep 5
+            done
+            set -e
+            dpkg -l xfsprogs'
         working-directory: ${{env.BOX_DIR}}
+        timeout-minutes: 5
 
       # Amazon 2 has installed devtoolset-8 which upgrades GCC from 7.3.1 to 8.3.1.
       # The new gcc doesn't compile rpm packages properly, because of the /usr/lib/rpm/redhat/macros provided
