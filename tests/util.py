@@ -85,8 +85,11 @@ def loop_create(path, part_count = 0):
     part_type = "primary"
     part_size_percent = 100 // part_count
     cmd = ["parted", "--script", "--align", "optimal", loopdev, "mklabel", "gpt"]
-    for i in range(0, 100, part_size_percent):
-        cmd.append("mkpart " + part_type + " {}% {}%".format(i, i + part_size_percent))
+    for start in range(0, 100, part_size_percent):
+        end = start + part_size_percent
+        if end > 100: break
+        if end + part_size_percent > 100: end = 100
+        cmd.append("mkpart " + part_type + " {}% {}%".format(start, end))
 
     subprocess.check_call(cmd, timeout=30)
 

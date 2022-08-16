@@ -14,14 +14,13 @@ import util
 from random import randint
 
 @unittest.skipUnless(os.geteuid() == 0, "Must be run as root")
-#@unittest.skipUnless(os.getenv('TEST_DEVICES'), "This testcase works just with the internal loopback devices for now")
+@unittest.skipIf(os.getenv('TEST_DEVICES'), "Multipart testcase works now just with the internal loopback devices")
 class DeviceTestCaseMultipart(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # For now let's hardcode 2 partitions
         cls.part_count = 2
         cls.minors = []
-        cls.minors.append(randint(0, 23))
         for i in range(cls.part_count):
             # Unexpectedly randint can generate 2 same numbers in a row.
             # So, let's verify the difference of the random numbers.

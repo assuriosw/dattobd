@@ -27,12 +27,13 @@ class TestMultipart(DeviceTestCaseMultipart):
             self.snap_devices.append("/dev/elastio-snap{}".format(self.minors[i]))
             self.snap_mounts.append("/tmp/elastio-snap{}".format(self.minors[i]))
             os.makedirs(self.snap_mounts[i], exist_ok=True)
+            self.addCleanup(os.rmdir, self.snap_mounts[i])
 
 
-    def test_setup_2_volumes_same_disk(self):
+    def test_multipart_setup_volumes_same_disk(self):
+        # Setup snapshot devices and check them
         for i in range(self.part_count):
             self.assertEqual(elastio_snap.setup(self.minors[i], self.devices[i], self.cow_full_paths[i]), 0)
-            #self.addCleanup(elastio_snap.destroy, self.minors[i])
 
             self.assertTrue(os.path.exists(self.snap_devices[i]))
 
@@ -45,22 +46,38 @@ class TestMultipart(DeviceTestCaseMultipart):
             self.assertEqual(snapdev["bdev"], self.devices[i])
             self.assertEqual(snapdev["version"], 1)
 
-        # Destroy 2nd snapshot device first
+        # Destroy snapshot devices
+        for i in reversed(range(self.part_count)):
+            self.assertEqual(elastio_snap.destroy(self.minors[i]), 0)
+
+
+    def test_multipart_setup_volumes_write_last_after_destroy(self):
+        if (self.part_count < 2):
+            self.skipTest("This test requires at least 2 partitions")
+
+        for i in range(self.part_count):
+            self.assertEqual(elastio_snap.setup(self.minors[i], self.devices[i], self.cow_full_paths[i]), 0)
+            self.assertTrue(os.path.exists(self.snap_devices[i]))
+
+        # Destroy last snapshot device first
         self.assertEqual(elastio_snap.destroy(self.minors[-1]), 0)
 
-        # Write to the 2nd device
+        # Write to the last device
         testfile = "{}/testfile".format(self.mounts[-1])
         with open(testfile, "w") as f:
             f.write("The quick brown fox")
 
         self.addCleanup(os.remove, testfile)
         os.sync()
-        time.sleep(5)
+        # Wait a bit for the panic? No?
+        time.sleep(1)
 
-        # Destroy 1st snapshot device finally
-        self.assertEqual(elastio_snap.destroy(self.minors[0]), 0)
+        # Destroy remaining snapshot devices, finally, from the last to the first
+        for i in reversed(range(self.part_count - 1)):
+            self.assertEqual(elastio_snap.destroy(self.minors[i]), 0)
 
-    def test_modify_origins(self):
+
+    def test_multipart_modify_origins(self):
         for i in range(self.part_count):
             testfile = "{}/testfile".format(self.mounts[i])
             snapfile = "{}/testfile".format(self.snap_mounts[i])
@@ -83,7 +100,6 @@ class TestMultipart(DeviceTestCaseMultipart):
             opts = "nouuid,norecovery,ro" if (self.fs == "xfs") else "ro"
             util.mount(self.snap_devices[i], self.snap_mounts[i], opts)
             self.addCleanup(util.unmount, self.snap_mounts[i])
-            self.addCleanup(os.rmdir, self.snap_mounts[i])
 
             md5_snap = util.md5sum(snapfile)
             self.assertEqual(md5_orig, md5_snap)
