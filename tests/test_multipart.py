@@ -7,6 +7,7 @@
 
 import errno
 import os
+import platform
 import subprocess
 import time
 import unittest
@@ -77,6 +78,7 @@ class TestMultipart(DeviceTestCaseMultipart):
             self.assertEqual(elastio_snap.destroy(self.minors[i]), 0)
 
 
+    @unittest.skipIf(os.getenv('TEST_FS') == "xfs" and  platform.release().rsplit(".", 1)[0] == "4.18.0-383.el8", "Broken on CentOS 8 with kernel 4.18.0-383.el8 and XFS. See #159")
     def test_multipart_modify_origins(self):
         for i in range(self.part_count):
             testfile = "{}/testfile".format(self.mounts[i])
