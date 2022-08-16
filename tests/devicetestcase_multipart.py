@@ -15,6 +15,7 @@ from random import randint
 
 @unittest.skipUnless(os.geteuid() == 0, "Must be run as root")
 @unittest.skipIf(os.getenv('TEST_DEVICES'), "Multipart testcase works now just with the internal loopback devices")
+@unittest.skipIf(os.getenv('LVM') or os.getenv('RAID'), "Multipart testcase does not support LVM/raid devices creation")
 class DeviceTestCaseMultipart(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -43,7 +44,7 @@ class DeviceTestCaseMultipart(unittest.TestCase):
         cls.fs = os.getenv('TEST_FS', 'ext4')
         for i in range(cls.part_count):
             util.mkfs(cls.devices[i], cls.fs)
-            cls.mounts.append("/tmp/elastio-snap_{0:03d}".format(cls.minors[i]))
+            cls.mounts.append("/tmp/elio-dev-mnt_{0:03d}".format(cls.minors[i]))
             os.makedirs(cls.mounts[i], exist_ok=True)
             util.mount(cls.devices[i], cls.mounts[i])
 

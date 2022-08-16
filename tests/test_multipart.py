@@ -25,7 +25,7 @@ class TestMultipart(DeviceTestCaseMultipart):
         for i in range(self.part_count):
             self.cow_full_paths.append("{}/{}".format(self.mounts[i], self.cow_file))
             self.snap_devices.append("/dev/elastio-snap{}".format(self.minors[i]))
-            self.snap_mounts.append("/tmp/elastio-snap{}".format(self.minors[i]))
+            self.snap_mounts.append("/tmp/elio-snap-mnt{0:03d}".format(self.minors[i]))
             os.makedirs(self.snap_mounts[i], exist_ok=True)
             self.addCleanup(os.rmdir, self.snap_mounts[i])
 
