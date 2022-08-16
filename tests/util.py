@@ -75,9 +75,22 @@ def udev_stop_exec_queue():
     subprocess.check_call(cmd)
 
 
-def loop_create(path):
+def loop_create(path, part_count = 0):
     cmd = ["losetup", "--find", "--show", "--partscan", path]
-    return subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8")
+    loopdev = subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8")
+
+    if part_count == 0:
+        return loopdev
+
+    part_type = "primary"
+    part_size_percent = 100 // part_count
+    cmd = ["parted", "--script", "--align", "optimal", loopdev, "mklabel", "gpt"]
+    for i in range(0, 100, part_size_percent):
+        cmd.append("mkpart " + part_type + " {}% {}%".format(i, i + part_size_percent))
+
+    subprocess.check_call(cmd, timeout=30)
+
+    return loopdev
 
 
 def loop_destroy(loop):
@@ -98,8 +111,8 @@ def dev_size_mb(device):
     return int(subprocess.check_output("blockdev --getsize64 %s" % device, shell=True))//1024**2
 
 
-# This method finds name of the last partition of the disk
-def get_last_partition(disk):
+# This method finds names of the partitions of the disk
+def get_partitions(disk):
     # The output of this command 'lsblk /dev/loop0 -l -o NAME -n' is something like
     # loop0
     # loop0p1
@@ -107,8 +120,14 @@ def get_last_partition(disk):
     cmd = ["lsblk", disk, "-l", "-o", "NAME", "-n"]
     disk_and_parts = subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8").splitlines()
     disk_and_parts.sort()
-    # We need to take last item from the sorted list, which is partition for sure
-    return "/dev/" + disk_and_parts[-1]
+    parts = ['/dev/{}'.format(part) for part in disk_and_parts]
+    parts.remove(disk)
+    return parts
+
+
+# This method finds name of the last partition of the disk
+def get_last_partition(disk):
+    return get_partitions(disk)[-1]
 
 
 def parted_create_lvm_raid_partitions(devices, kind):
