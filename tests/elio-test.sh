@@ -55,6 +55,10 @@ if [ ${#test_devices[@]} -ne 0 ]; then
             echo "The script's argument $test_device seems to be not a block device."
             exit 1
         fi
+        if ! lsblk $test_device -l -o TYPE -n | grep -q disk >/dev/null 2>&1 && ([ -n "$LVM" ] || [ -n "$RAID" ]); then
+            echo "The script's argument $test_device is not a disk (maybe partition). The disks are expected for LVM/RAID configuration."
+            exit 1
+        fi
     done
 
     export TEST_DEVICES=$(echo ${test_devices[*]})

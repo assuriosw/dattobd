@@ -246,7 +246,7 @@ jobs:
         if: "${{ matrix.distro != 'debian8' && matrix.distro != 'ubuntu2004' && !(matrix.distro == 'ubuntu2204' && matrix.arch == 'arm64') }}"
         run: |
           for fs in ${FS[*]}; do
-            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 -d /dev/vdc1 -f $fs --lvm"
+            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb -d /dev/vdc -f $fs --lvm"
           done
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 10
@@ -262,7 +262,21 @@ jobs:
         if: "${{ matrix.distro != 'debian8' }}"
         run: |
           for fs in ${FS[*]}; do
-            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 -d /dev/vdc1 -f $fs --raid"
+            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb -d /dev/vdc -f $fs --raid"
+          done
+        working-directory: ${{env.BOX_DIR}}
+        timeout-minutes: 10
+
+      - name: Show dmesg
+        if: always()
+        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "cat tests/dmesg.log; sudo dmesg -c"
+        working-directory: ${{env.BOX_DIR}}
+        timeout-minutes: 1
+
+      - name: Run tests multipart (qcow2 disk)
+        run: |
+          for fs in ${FS[*]}; do
+            vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb -f $fs -t test_multipart"
           done
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 10
