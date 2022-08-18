@@ -26,6 +26,7 @@ usage()
     echo "                      A loopback device is used by default, if this parameter is not specified."
     echo "  -l | --lvm        : Run tests on the mirrored LVM device. Two loopback devices will be used to create a mirror."
     echo "  -r | --raid       : Run tests on the mirrored RAID device. Two loopback devices will be used to create a mirror."
+    echo "  -t | --testcase   : Run tests of the specific test-case 'test_transition_incremental'."
     echo "  -h | --help       : Show this usage help."
 }
 
@@ -35,6 +36,7 @@ while [ "$1" != "" ]; do
         -f | --filesystem)  shift && TEST_FS=$1 ;;
         -l | --lvm)         export LVM=mirror ;;
         -r | --raid)        export RAID=mirror ;;
+        -t | --testcase)    shift && test_case=$1 ;;
         -h | --help)        usage && exit ;;
         *)                  echo "Wrong arguments!"
                             usage && exit 15 ;;
@@ -91,7 +93,7 @@ echo
 dmesg -c &> /dev/null
 >| dmesg.log
 
-python3 -m unittest -v
+python3 -m unittest -v $test_case
 ret=$?
 dmesg > dmesg.log
 

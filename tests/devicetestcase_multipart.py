@@ -15,6 +15,7 @@ from random import randint
 
 @unittest.skipUnless(os.geteuid() == 0, "Must be run as root")
 @unittest.skipIf(os.getenv('LVM') or os.getenv('RAID'), "Multipart testcase does not support LVM/raid devices creation")
+@unittest.skipIf(os.getenv('TEST_DEVICES') and util.get_disk_by_partition(os.getenv('TEST_DEVICES').split()[0]), "Multipart testcase requires disk, not a partition.")
 class DeviceTestCaseMultipart(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

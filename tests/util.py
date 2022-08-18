@@ -140,9 +140,15 @@ def get_last_partition(disk):
     return get_partitions(disk)[-1]
 
 
+def get_disk_by_partition(part):
+    cmd = ["lsblk", "-ndo", "pkname", part]
+    return subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8")
+
+
 def wipefs(device):
     cmd = ["wipefs", "--all", "--force", "--quiet", device]
     subprocess.check_call(cmd, timeout=30)
+
 
 def parted_create_lvm_raid_partitions(devices, kind):
     if kind == "lvm":
