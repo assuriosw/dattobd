@@ -14,7 +14,6 @@ import util
 from random import randint
 
 @unittest.skipUnless(os.geteuid() == 0, "Must be run as root")
-@unittest.skipIf(os.getenv('TEST_DEVICES'), "Multipart testcase works now just with the internal loopback devices")
 @unittest.skipIf(os.getenv('LVM') or os.getenv('RAID'), "Multipart testcase does not support LVM/raid devices creation")
 class DeviceTestCaseMultipart(unittest.TestCase):
     @classmethod
@@ -33,10 +32,17 @@ class DeviceTestCaseMultipart(unittest.TestCase):
         cls.kmod = kmod.Module("../src/elastio-snap.ko")
         cls.kmod.load(debug=1)
 
-        cls.backing_store = ("/tmp/disk_{0:03d}.img".format(cls.minors[0]))
-        util.dd("/dev/zero", cls.backing_store, 256, bs="1M")
+        if os.getenv('TEST_DEVICES'):
+            # We need just 1st device to create partitions on it
+            cls.device = os.getenv('TEST_DEVICES').split()[0]
+            util.wipefs(cls.device)
+            util.dd("/dev/zero", cls.device, util.dev_size_mb(cls.device), bs="1M")
+            util.partition(cls.device, cls.part_count)
+        else:
+            cls.backing_store = ("/tmp/disk_{0:03d}.img".format(cls.minors[0]))
+            util.dd("/dev/zero", cls.backing_store, 256, bs="1M")
+            cls.device = util.loop_create(cls.backing_store, cls.part_count)
 
-        cls.device = util.loop_create(cls.backing_store, cls.part_count)
         cls.devices = []
         cls.devices += util.get_partitions(cls.device)
 
@@ -54,7 +60,9 @@ class DeviceTestCaseMultipart(unittest.TestCase):
             util.unmount(mount)
             os.rmdir(mount)
 
-        util.loop_destroy(cls.device)
-        os.unlink(cls.backing_store)
+        # Destroy loopback device and unlink its storage
+        if not os.getenv('TEST_DEVICES'):
+            util.loop_destroy(cls.device)
+            os.unlink(cls.backing_store)
 
         cls.kmod.unload()

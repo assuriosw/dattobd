@@ -31,7 +31,7 @@ usage()
 
 while [ "$1" != "" ]; do
     case $1 in
-        -d | --device)      shift && TEST_DEVICES+=($1) ;;
+        -d | --device)      shift && test_devices+=($1) ;;
         -f | --filesystem)  shift && TEST_FS=$1 ;;
         -l | --lvm)         export LVM=mirror ;;
         -r | --raid)        export RAID=mirror ;;
@@ -56,11 +56,6 @@ if [ ${#test_devices[@]} -ne 0 ]; then
     done
 
     export TEST_DEVICES=$(echo ${test_devices[*]})
-fi
-
-if [ -n "$TEST_DEVICE" ] && ! lsblk $TEST_DEVICE >/dev/null 2>&1; then
-    echo "The script's argumet $TEST_DEVICE seems to be not a block device."
-    exit 1
 fi
 
 if [ -n "${TEST_FS+set}" ] && [ -z "${TEST_FS}" ]; then

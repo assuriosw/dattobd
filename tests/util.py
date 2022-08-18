@@ -75,16 +75,13 @@ def udev_stop_exec_queue():
     subprocess.check_call(cmd)
 
 
-def loop_create(path, part_count = 0):
-    cmd = ["losetup", "--find", "--show", "--partscan", path]
-    loopdev = subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8")
-
+def partition(disk, part_count = 0):
     if part_count == 0:
-        return loopdev
+        return disk
 
     part_type = "primary"
     part_size_percent = 100 // part_count
-    cmd = ["parted", "--script", "--align", "optimal", loopdev, "mklabel", "gpt"]
+    cmd = ["parted", "--script", "--align", "optimal", disk, "mklabel", "gpt"]
     for start in range(0, 100, part_size_percent):
         end = start + part_size_percent
         if end > 100: break
@@ -92,6 +89,16 @@ def loop_create(path, part_count = 0):
         cmd.append("mkpart " + part_type + " {}% {}%".format(start, end))
 
     subprocess.check_call(cmd, timeout=30)
+
+    return disk
+
+
+def loop_create(path, part_count = 0):
+    cmd = ["losetup", "--find", "--show", "--partscan", path]
+    loopdev = subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8")
+
+    if part_count > 0:
+        partition(loopdev, part_count)
 
     return loopdev
 
@@ -133,6 +140,10 @@ def get_last_partition(disk):
     return get_partitions(disk)[-1]
 
 
+def wipefs(device):
+    cmd = ["wipefs", "--all", "--force", "--quiet", device]
+    subprocess.check_call(cmd, timeout=30)
+
 def parted_create_lvm_raid_partitions(devices, kind):
     if kind == "lvm":
         part_type="LVM2"
@@ -144,8 +155,7 @@ def parted_create_lvm_raid_partitions(devices, kind):
     settle()
     partitions=[]
     for device in devices:
-        cmd = ["wipefs", "--all", "--force", "--quiet", device]
-        subprocess.check_call(cmd, timeout=30)
+        wipefs(device)
         cmd = ["parted", "--script", device, "mklabel gpt"]
         subprocess.check_call(cmd, timeout=30)
         cmd = ["parted", "--script", device, "mkpart '" + part_type + "' 0% 100%"]
@@ -158,8 +168,7 @@ def parted_create_lvm_raid_partitions(devices, kind):
         part = get_last_partition(device)
         # mdadm rarely and randomly complains on create about superblock
         # let's clean it up and do not care about return code
-        cmd = ["wipefs", "--all", "--force", "--quiet", part]
-        subprocess.check_call(cmd, timeout=30)
+        wipefs(part)
         partitions.append(part)
 
     return partitions
