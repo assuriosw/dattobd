@@ -22,13 +22,17 @@ class DeviceTestCase(unittest.TestCase):
         seeds = []
         cls.backing_stores = []
         cls.devices = []
+        cls.orig_disks = []
 
         cls.kmod = kmod.Module("../src/elastio-snap.ko")
         cls.kmod.load(debug=1)
         if os.getenv('TEST_DEVICES'):
-            cls.devices = os.getenv('TEST_DEVICES').split()
-            for device in cls.devices:
-                util.dd("/dev/zero", device, util.dev_size_mb(device), bs="1M")
+            cls.orig_disks = os.getenv('TEST_DEVICES').split()
+            for disk in cls.orig_disks:
+                util.wipefs(disk)
+                util.dd("/dev/zero", disk, util.dev_size_mb(disk), bs="1M")
+                util.partition(disk, 1)
+                cls.devices.append(util.get_last_partition(disk))
         else:
             dev_count = 2 if os.getenv('LVM') or os.getenv('RAID') else 1
             for i in range(dev_count):
@@ -67,8 +71,12 @@ class DeviceTestCase(unittest.TestCase):
         if os.getenv('RAID'):
             util.disassemble_mirror_raid(cls.device, cls.devices)
 
-        # Destroy loopback devices and unlink their storage
-        if not os.getenv('TEST_DEVICES'):
+        if os.getenv('TEST_DEVICES'):
+            # Cleanup test partitions from the disks
+            for disk in cls.orig_disks:
+                util.wipefs(disk)
+        else:
+            # Destroy loopback devices and unlink their storage
             for device in cls.devices:
                 util.loop_destroy(device)
             for backing_store in cls.backing_stores:

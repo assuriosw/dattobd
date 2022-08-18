@@ -21,7 +21,7 @@ usage()
     echo
     echo "  -f | --filesystem : File system to test: $(echo ${filesystems[*]} | sed "s/ /, /g")."
     echo "                      ext4 is used by default, if this parameter is not specified."
-    echo "  -d | --device     : Block device to use instead of the loopback device. It should be repeated for 2 or more devices to create mirrored LVM or raid device on them."
+    echo "  -d | --device     : Disk block device to use instead of the loopback device. It should be repeated for 2 or more devices to create mirrored LVM or raid device on them."
     echo "                      NOTE: This device will be formatted during the test and all data there will be lost!"
     echo "                      A loopback device is used by default, if this parameter is not specified."
     echo "  -l | --lvm        : Run tests on the mirrored LVM device. Two loopback devices will be used to create a mirror."
@@ -51,6 +51,10 @@ if [ ${#test_devices[@]} -ne 0 ]; then
     for test_device in ${test_devices[@]}; do
         if ! lsblk $test_device >/dev/null 2>&1; then
             echo "The script's argument $test_device seems to be not a block device."
+            exit 1
+        fi
+        if ! lsblk $test_device -l -o TYPE -n | grep -q disk >/dev/null 2>&1; then
+            echo "The script's argument $test_device is not a disk (maybe partition)."
             exit 1
         fi
     done
