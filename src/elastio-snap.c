@@ -2766,7 +2766,7 @@ static int tracing_ops_alloc(struct snap_device *dev) {
 }
 
 static inline struct tracing_ops* tracing_ops_get(struct tracing_ops *trops) {
-	atomic_inc(&trops->refs);
+	if (trops) atomic_inc(&trops->refs);
 	return trops;
 }
 
