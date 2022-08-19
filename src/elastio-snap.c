@@ -3693,7 +3693,7 @@ static int find_orig_fops(struct block_device *bdev, struct block_device_operati
 			*mrf = dev->sd_orig_mrf;
 			*tracing_ops = tracing_ops_get(dev->sd_tracing_ops);
 			bdevname(dev->sd_base_dev, bdev_name);
-			LOG_DEBUG("found already traced device %s with the same original bd_ops. orig mrf = %p; orig ops = %p; tracing ops = %p", bdev_name, *mrf, *ops, *tracing_ops->bd_ops);
+			LOG_DEBUG("found already traced device %s with the same original bd_ops. orig mrf = %p; orig ops = %p; tracing ops = %p", bdev_name, *mrf, *ops, *tracing_ops);
 			return 0;
 		}
 	}
