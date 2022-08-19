@@ -147,7 +147,7 @@ def get_disk_by_partition(part):
 
 def wipefs(device):
     cmd = ["wipefs", "--all", "--force", "--quiet", device]
-    subprocess.check_call(cmd, timeout=30)
+    subprocess.check_call(cmd, timeout=1220)
 
 
 def parted_create_lvm_raid_partitions(devices, kind):
