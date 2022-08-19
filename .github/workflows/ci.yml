@@ -205,9 +205,10 @@ jobs:
           ARCH=$(uname -m)
           TEST_IMAGES=(${TEST_IMAGES})
           TEST_DRIVES=(${TEST_DRIVES})
+          [ ${ARCH} == "x86_64" ] && SZ="1G" || SZ="256M"
           [ ${ARCH} != "x86_64" ] && VIRSH_FLAGS="--config" || true
           for i in ${!TEST_IMAGES[*]}; do
-            qemu-img create -f qcow2 ${TEST_IMAGES[i]} 1G
+            qemu-img create -f qcow2 ${TEST_IMAGES[i]} $SZ
             virsh attach-disk --domain ${BOX_DIR##*/}_${INSTANCE_NAME} --source ${TEST_IMAGES[i]} --target ${TEST_DRIVES[i]} --driver qemu --subdriver qcow2 --targetbus virtio ${VIRSH_FLAGS-}
           done
           # ARM64 boxes don't support "hot plug" w/o reboot
