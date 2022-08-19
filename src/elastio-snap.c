@@ -1008,6 +1008,13 @@ struct tracing_params{
 	struct bsector_list bio_sects;
 };
 
+#ifdef USE_BDOPS_SUBMIT_BIO
+struct tracing_ops {
+	struct block_device_operations *bd_ops;
+	atomic_t refs;
+};
+#endif
+
 struct cow_section{
 	char has_data; //zero if this section has mappings (on file or in memory)
 	unsigned long usage; //counter that keeps track of how often this section is used
@@ -1053,7 +1060,9 @@ struct snap_device{
 	struct inode *sd_cow_inode; //cow file inode
 #ifdef USE_BDOPS_SUBMIT_BIO
 	struct block_device_operations *sd_orig_ops; //block device's original operations sructure with the submit bio function
-	struct block_device_operations *sd_tracing_ops; //block device's operations sructure, copy of the original one, but with the submit bio function used for tracing
+	struct tracing_ops *sd_tracing_ops; //block device's operations sructure, copy of the original one,
+										//but with the submit bio function used for tracing,
+										//wrapped into tracing_ops structure with the ref counter.
 #endif
 	make_request_fn *sd_orig_mrf; //block device's original make request function
 	struct task_struct *sd_cow_thread; //thread for handling file read/writes
@@ -2723,6 +2732,57 @@ static int tp_add(struct tracing_params* tp, struct bio* bio) {
 	return 0;
 }
 
+/***************************TRACING OPS FUNCTIONS**************************/
+
+#ifdef USE_BDOPS_SUBMIT_BIO
+
+static MRF_RETURN_TYPE tracing_mrf(struct bio *);
+
+static int tracing_ops_alloc(struct snap_device *dev) {
+	struct tracing_ops *trops;
+
+	trops = kmalloc(sizeof(struct tracing_ops), GFP_KERNEL);
+	if(!trops) {
+		LOG_ERROR(-ENOMEM, "error allocating tracing ops struct");
+		return -ENOMEM;
+	}
+
+	trops->bd_ops = kmalloc(sizeof(struct block_device_operations), GFP_KERNEL);
+	if(!trops->bd_ops) {
+		kfree(trops);
+		LOG_ERROR(-ENOMEM, "error allocating block device ops struct");
+		return -ENOMEM;
+	}
+
+	memcpy(trops->bd_ops, elastio_snap_get_bd_ops(dev->sd_base_dev), sizeof(struct block_device_operations));
+
+	// Set tracing_mrf as submit_bio and owner. All other content is already there copied from the original structure.
+	trops->bd_ops->owner = THIS_MODULE;
+	trops->bd_ops->submit_bio = tracing_mrf;
+	atomic_set(&trops->refs, 1);
+	dev->sd_tracing_ops = trops;
+
+	return 0;
+}
+
+static inline struct tracing_ops* tracing_ops_get(struct tracing_ops *trops) {
+	atomic_inc(&trops->refs);
+	return trops;
+}
+
+// Multiple devices on the same disk are sharing block_device_operations structure.
+// This struct is replaced with the value of sd_tracing_ops in case if one of the partitions is tracked by this driver.
+// We should not free this struct here unless no other devices are tracked.
+static inline void tracing_ops_put(struct tracing_ops *trops) {
+	//drop a reference to the tracing ops
+	if(atomic_dec_and_test(&trops->refs)) {
+		kfree(trops->bd_ops);
+		kfree(trops);
+	}
+}
+
+#endif
+
 /****************************BIO HELPER FUNCTIONS*****************************/
 
 static inline struct inode *page_get_inode(struct page *pg){
@@ -3595,7 +3655,7 @@ static int find_orig_mrf(struct block_device *bdev, make_request_fn **mrf){
 
 #ifdef USE_BDOPS_SUBMIT_BIO
 // Linux version 5.9+
-static int find_orig_fops(struct block_device *bdev, struct block_device_operations **ops, make_request_fn **mrf, struct block_device_operations **tracing_ops){
+static int find_orig_fops(struct block_device *bdev, struct block_device_operations **ops, make_request_fn **mrf, struct tracing_ops **tracing_ops){
 	int i;
 	struct snap_device *dev;
 	struct block_device_operations *orig_ops = elastio_snap_get_bd_ops(bdev);
@@ -3631,9 +3691,9 @@ static int find_orig_fops(struct block_device *bdev, struct block_device_operati
 		if(orig_ops == elastio_snap_get_bd_ops(dev->sd_base_dev)){
 			*ops = dev->sd_orig_ops;
 			*mrf = dev->sd_orig_mrf;
-			*tracing_ops = dev->sd_tracing_ops;
+			*tracing_ops = tracing_ops_get(dev->sd_tracing_ops);
 			bdevname(dev->sd_base_dev, bdev_name);
-			LOG_DEBUG("found already traced device %s with the same original bd_ops. orig mrf = %p; orig ops = %p; tracing ops = %p", bdev_name, *mrf, *ops, *tracing_ops);
+			LOG_DEBUG("found already traced device %s with the same original bd_ops. orig mrf = %p; orig ops = %p; tracing ops = %p", bdev_name, *mrf, *ops, *tracing_ops->bd_ops);
 			return 0;
 		}
 	}
@@ -4237,21 +4297,8 @@ static void minor_range_include(unsigned int minor){
 
 static inline void free_mrf_and_ops(struct snap_device *dev){
 #ifdef USE_BDOPS_SUBMIT_BIO
-	int i;
-	char free_tracing_ops = 1;
-	struct snap_device *other_dev;
 	if (dev->sd_tracing_ops) {
-		// Multiple devices on the same disk are sharing block_device_operations structure.
-		// This struct is replaced with the value of sd_tracing_ops in case if one of the partitions is tracked by this driver.
-		// We should not free this struct here unless no other devices are tracked.
-		tracer_for_each(other_dev, i){
-			if(!other_dev || other_dev == dev) continue;
-			if(dev->sd_tracing_ops == other_dev->sd_tracing_ops){
-				free_tracing_ops = 0;
-				break;
-			}
-		}
-		if (free_tracing_ops) kfree(dev->sd_tracing_ops);
+		tracing_ops_put(dev->sd_tracing_ops);
 		dev->sd_tracing_ops = NULL;
 	}
 	dev->sd_orig_ops = NULL;
@@ -4321,24 +4368,14 @@ static int __tracer_setup_tracing(struct snap_device *dev, unsigned int minor){
 
 		if (!dev->sd_tracing_ops) {
 			LOG_DEBUG("allocating tracing ops for device with minor %i", minor);
-			dev->sd_tracing_ops = kmalloc(sizeof(struct block_device_operations), GFP_KERNEL);
-			if (!dev->sd_tracing_ops) {
-				ret = -ENOMEM;
-				LOG_ERROR(ret, "error allocating tracing ops");
-				goto error;
-			}
-
-			memcpy(dev->sd_tracing_ops, elastio_snap_get_bd_ops(dev->sd_base_dev), sizeof(struct block_device_operations));
-
-			// set tracing_mrf as submit_bio and owner. all other content is already there copied from the original structure
-			dev->sd_tracing_ops->owner = THIS_MODULE;
-			dev->sd_tracing_ops->submit_bio = tracing_mrf;
+			ret = tracing_ops_alloc(dev);
+			if (ret) goto error;
 		}
 		else {
 			LOG_DEBUG("using already existing tracing ops for device with minor %i", minor);
 		}
 
-		ret = __tracer_transition_tracing(dev, dev->sd_base_dev, dev->sd_tracing_ops, &snap_devices[minor]);
+		ret = __tracer_transition_tracing(dev, dev->sd_base_dev, dev->sd_tracing_ops->bd_ops, &snap_devices[minor]);
 	}
 	else {
 		LOG_DEBUG("device with minor %i already has sd_tracing_ops", minor);
@@ -5376,7 +5413,7 @@ static int bdev_switch_ownership(const char __user *dir_name, int follow_flags, 
 		case OWNERSHIP_TO_DRIVER:
 			LOG_DEBUG("re-gaining ownership over %s", bdev_name);
 #ifdef USE_BDOPS_SUBMIT_BIO
-			__tracer_transition_tracing(dev, dev->sd_base_dev, dev->sd_tracing_ops, NULL);
+			__tracer_transition_tracing(dev, dev->sd_base_dev, dev->sd_tracing_ops->bd_ops, NULL);
 #else
 			__tracer_transition_tracing(dev, dev->sd_base_dev, dev->sd_orig_mrf, NULL);
 #endif
