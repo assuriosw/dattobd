@@ -64,6 +64,9 @@ def settle(timeout=20):
     cmd = ["udevadm", "settle", "-t", "{}".format(timeout)]
     subprocess.check_call(cmd, timeout=(timeout + 10))
 
+def partprobe(device, timeout=30):
+        cmd = ["partprobe", device]
+        subprocess.check_call(cmd, timeout=timeout)
 
 def udev_start_exec_queue():
     cmd = ["udevadm", "control", "--start-exec-queue"]
@@ -89,6 +92,8 @@ def partition(disk, part_count = 0):
         cmd.append("mkpart " + part_type + " {}% {}%".format(start, end))
 
     subprocess.check_call(cmd, timeout=30)
+    partprobe(disk)
+    settle()
 
     return disk
 
@@ -168,8 +173,7 @@ def parted_create_lvm_raid_partitions(devices, kind):
         subprocess.check_call(cmd, timeout=30)
         cmd = ["parted", "--script", device, "set 1 " + kind + " on"]
         subprocess.check_call(cmd, timeout=30)
-        cmd = ["partprobe", device]
-        subprocess.check_call(cmd, timeout=30)
+        partprobe(device)
         settle()
         part = get_last_partition(device)
         # mdadm rarely and randomly complains on create about superblock
