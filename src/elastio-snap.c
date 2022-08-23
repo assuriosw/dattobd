@@ -2867,6 +2867,11 @@ static int bio_make_read_clone(struct block_device *bdev, struct bio_set *bs, st
 	bio_sector(new_bio) = sect;
 	bio_idx(new_bio) = 0;
 
+	if (bio_flagged(orig_bio, BIO_REMAPPED))
+		bio_set_flag(new_bio, BIO_REMAPPED);
+	if (bio_flagged(orig_bio, BIO_THROTTLED))
+		bio_set_flag(new_bio, BIO_THROTTLED);
+
 #ifdef BIO_REDIRECT_TO_PART0
 	/**
 	 * starting from 5.16+ we change the device to the root partition
