@@ -2866,6 +2866,14 @@ static int bio_make_read_clone(struct block_device *bdev, struct bio_set *bs, st
 	bio_sector(new_bio) = sect;
 	bio_idx(new_bio) = 0;
 
+	/*
+	 * The following flags were added
+	 * in v4.10 and in v5.12 respectively
+	 * and may affect bio processing sequence.
+	 * For this reason, we copy them from the
+	 * original bio
+	 */
+
 #if defined HAVE_BIO_REMAPPED
 	if (bio_flagged(orig_bio, BIO_REMAPPED))
 		bio_set_flag(new_bio, BIO_REMAPPED);
