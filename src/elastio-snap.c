@@ -625,7 +625,6 @@ static inline int elastio_snap_call_mrf(make_request_fn *fn, struct bio *bio){
 		#define MRF_RETURN_TYPE void
 		#define MRF_RETURN(ret) return
 		#define MRF_RETURN_TYPE_VOID
-		#define BIO_REDIRECT_TO_PART0
 	#else
 		// Linux kernel version 5.9 - 5.15
 		#define MRF_RETURN_TYPE blk_qc_t
@@ -2871,14 +2870,6 @@ static int bio_make_read_clone(struct block_device *bdev, struct bio_set *bs, st
 		bio_set_flag(new_bio, BIO_REMAPPED);
 	if (bio_flagged(orig_bio, BIO_THROTTLED))
 		bio_set_flag(new_bio, BIO_THROTTLED);
-
-#ifdef BIO_REDIRECT_TO_PART0
-	/**
-	 * starting from 5.16+ we change the device to the root partition
-	 * to make sure the 'dev->sd_sect_off' math remains the same
-	 */
-	new_bio->bi_bdev = new_bio->bi_bdev->bd_disk->part0;
-#endif
 
 	//fill the bio with pages
 	for(i = 0; i < actual_pages; i++){
