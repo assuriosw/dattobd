@@ -2866,10 +2866,15 @@ static int bio_make_read_clone(struct block_device *bdev, struct bio_set *bs, st
 	bio_sector(new_bio) = sect;
 	bio_idx(new_bio) = 0;
 
+#if defined HAVE_BIO_REMAPPED
 	if (bio_flagged(orig_bio, BIO_REMAPPED))
 		bio_set_flag(new_bio, BIO_REMAPPED);
+#endif
+
+#if defined HAVE_BIO_THROTTLED
 	if (bio_flagged(orig_bio, BIO_THROTTLED))
 		bio_set_flag(new_bio, BIO_THROTTLED);
+#endif
 
 	//fill the bio with pages
 	for(i = 0; i < actual_pages; i++){
