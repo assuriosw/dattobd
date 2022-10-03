@@ -1077,6 +1077,7 @@ struct snap_device{
 #endif
 	atomic64_t sd_submitted_cnt; //count of read clones submitted to underlying driver
 	atomic64_t sd_received_cnt; //count of read clones submitted to underlying driver
+	atomic64_t sd_processed_cnt; //count of read clones processed in snap_cow_thread()
 };
 
 static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
@@ -3224,6 +3225,7 @@ static int snap_cow_thread(void *data){
 				}
 			}
 
+			atomic64_inc(&dev->sd_processed_cnt);
 			bio_free_clone(bio);
 		}
 	}
@@ -3342,6 +3344,15 @@ error:
 	tracer_set_fail_state(dev, ret);
 	tp_put(tp);
 	bio_free_clone(bio);
+}
+
+static inline void wait_for_bio_complete(struct snap_device *dev)
+{
+	struct bio_queue *bq = &dev->sd_cow_bios;
+	if (atomic64_read(&dev->sd_received_cnt) != atomic64_read(&dev->sd_processed_cnt))
+		wait_event_interruptible_timeout(bq->event,
+				atomic64_read(&dev->sd_submitted_cnt) == atomic64_read(&dev->sd_processed_cnt),
+				msecs_to_jiffies(500));
 }
 
 #ifdef HAVE_BIO_ENDIO_INT
@@ -4251,6 +4262,7 @@ static int __tracer_setup_snap(struct snap_device *dev, unsigned int minor, stru
 
 	atomic64_set(&dev->sd_submitted_cnt, 0);
 	atomic64_set(&dev->sd_received_cnt, 0);
+	atomic64_set(&dev->sd_processed_cnt, 0);
 
 	return 0;
 
@@ -4793,6 +4805,8 @@ static int ioctl_destroy(unsigned int minor){
 	}
 
 	dev = snap_devices[minor];
+	wait_for_bio_complete(dev);
+
 	tracer_destroy(snap_devices[minor]);
 	kfree(dev);
 
@@ -4810,6 +4824,7 @@ static int ioctl_transition_inc(unsigned int minor){
 	if(ret) goto error;
 
 	dev = snap_devices[minor];
+	wait_for_bio_complete(dev);
 
 	//check that the device is not in the fail state
 	ret = tracer_read_fail_state(dev);
@@ -4849,6 +4864,7 @@ static int ioctl_transition_snap(unsigned int minor, const char *cow_path, unsig
 	if(ret) goto error;
 
 	dev = snap_devices[minor];
+	wait_for_bio_complete(dev);
 
 	//check that the device is not in the fail state
 	if(tracer_read_fail_state(dev)){
@@ -4885,6 +4901,7 @@ static int ioctl_reconfigure(unsigned int minor, unsigned long cache_size){
 	if(ret) goto error;
 
 	dev = snap_devices[minor];
+	wait_for_bio_complete(dev);
 
 	//check that the device is not in the fail state
 	if(tracer_read_fail_state(dev)){
@@ -4913,6 +4930,7 @@ static int ioctl_elastio_snap_info(struct elastio_snap_info *info){
 	if(ret) goto error;
 
 	dev = snap_devices[info->minor];
+	wait_for_bio_complete(dev);
 
 	tracer_elastio_snap_info(dev, info);
 
