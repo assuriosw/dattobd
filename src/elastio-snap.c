@@ -1111,6 +1111,7 @@ static void elastio_snap_proc_stop(struct seq_file *m, void *v);
 static int elastio_snap_proc_open(struct inode *inode, struct file *filp);
 static int elastio_snap_proc_release(struct inode *inode, struct file *file);
 
+#define WAIT_SUBMITTED_BIOS_MSEC 500
 // wait msec value to be at least 100 msec as wait loop uses it by msleep of (100) timeout pieces
 #define ELASTIO_SNAP_WAIT_FOR_RELEASE_MSEC              500
 #define ELASTIO_SNAP_WAIT_FOR_RELEASE_MAX_SLEEP_COUNT   100
@@ -3346,12 +3347,16 @@ error:
 	bio_free_clone(bio);
 }
 
+/** Resolves issue https://github.com/elastio/elastio-snap/issues/170 */
 static inline void wait_for_bio_complete(struct snap_device *dev)
 {
 	struct bio_queue *bq = &dev->sd_cow_bios;
-	wait_event_interruptible_timeout(bq->event,
+	if (!wait_event_interruptible_timeout(bq->event,
 			atomic64_read(&dev->sd_submitted_cnt) == atomic64_read(&dev->sd_processed_cnt),
-			msecs_to_jiffies(500));
+			msecs_to_jiffies(WAIT_SUBMITTED_BIOS_MSEC))) {
+		LOG_DEBUG("failed wait for all submitted BIOs to be processed after %d ms. bio submitted = %lld, bio processed = %lld",
+				WAIT_SUBMITTED_BIOS_MSEC, atomic64_read(&dev->sd_submitted_cnt), atomic64_read(&dev->sd_processed_cnt));
+	}
 }
 
 #ifdef HAVE_BIO_ENDIO_INT
