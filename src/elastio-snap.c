@@ -3349,10 +3349,9 @@ error:
 static inline void wait_for_bio_complete(struct snap_device *dev)
 {
 	struct bio_queue *bq = &dev->sd_cow_bios;
-	if (atomic64_read(&dev->sd_received_cnt) != atomic64_read(&dev->sd_processed_cnt))
-		wait_event_interruptible_timeout(bq->event,
-				atomic64_read(&dev->sd_submitted_cnt) == atomic64_read(&dev->sd_processed_cnt),
-				msecs_to_jiffies(500));
+	wait_event_interruptible_timeout(bq->event,
+			atomic64_read(&dev->sd_submitted_cnt) == atomic64_read(&dev->sd_processed_cnt),
+			msecs_to_jiffies(500));
 }
 
 #ifdef HAVE_BIO_ENDIO_INT
@@ -4930,7 +4929,6 @@ static int ioctl_elastio_snap_info(struct elastio_snap_info *info){
 	if(ret) goto error;
 
 	dev = snap_devices[info->minor];
-	wait_for_bio_complete(dev);
 
 	tracer_elastio_snap_info(dev, info);
 
