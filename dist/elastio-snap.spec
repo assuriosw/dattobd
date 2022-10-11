@@ -106,7 +106,7 @@
 
 
 Name:            elastio-snap
-Version:         0.10.16
+Version:         0.11.0
 Release:         %{_release}
 Summary:         Kernel module and utilities for enabling low-level live backups
 Vendor:          Elastio Software, Inc.
@@ -218,6 +218,22 @@ Group:           System Environment/Kernel
 %if 0%{?rhel} != 5 && 0%{?suse_version} != 1110
 # noarch subpackages aren't supported in EL5 and SLE11
 BuildArch:       noarch
+%endif
+
+%if 0%{?debian}
+%if ( "%{_arch}" != "x86_64" && "%{_arch}" != "amd64" ) && ( %{debian} == 11 )
+
+# By default, on arm64, Debian 11 is provided with the kernel with
+# some symbols absent AND with without a System.map file. This makes
+# the elastio-snap driver work without sys_call_table hooking support.
+#
+# As a compromise solution, we install linux-image-$(uname -r)-dbg
+# to make it work properly. This package adds System.map and makes
+# it possible to fetch the address of the system call table
+#
+# Please refer to https://github.com/elastio/devboxes/pull/230
+Requires:        linux-image-%(uname -r)-dbg
+%endif
 %endif
 
 %if 0%{?rhel} >= 6 || 0%{?fedora} >= 23 || 0%{?suse_version} >= 1315
@@ -583,6 +599,29 @@ rm -rf %{buildroot}
 
 
 %changelog
+
+* Wed Aug 3 2022 Eugene Kovalenko <ikovalenko@elastio.com> - 0.11.0
+- Added support of Linux kernel 5.18 as on Fedora 36
+
+* Fri Jul 22 2022 Stanislav Barantsev <sbarantsev@elastio.com>
+- Fixed data corruption if bio request was split (LVM/RAID)
+
+* Fri Jul 15 2022 Eugene Kovalenko <ikovalenko@elastio.com>
+- Added support for LVM and software RAID on Linux kernels 5.8+
+- Modified tests to cover ext2/3/4, XFS filesystems
+
+* Fri Jun 10 2022 Stanislav Barantsev <sbarantsev@elastio.com>
+- Fixed syscall table location and dormant snapshots functionality after umount/mount
+- Added support of arm64 architecture
+- Fixed default library installation path and added permissions check before build
+
+* Fri May 20 2022 Alex Sereda <asereda@elastio.com> - 0.10.17
+- Add package repositories for Fedora 36 and Ubuntu 22.04
+- Support Linux kernel 5.16 - 5.17
+- Fix ability to take snapshots from the multiple devices at one time on kernels 5.9+
+- Allow COW file to be located on non-protected volume
+- Fix memory leak on free of cloned bio
+- Avoid system crash during memory overflow
 
 * Fri Dec 10 2021 Eugene Kovalenko <ikovalenko@elastio.com> - 0.10.16
 - Fix for the module loading after installation by DKMS v. 3.0+

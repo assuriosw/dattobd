@@ -98,7 +98,6 @@ static loff_t noop_llseek(struct file *file, loff_t offset, int origin){
 }
 #endif
 
-
 #ifndef HAVE_STRUCT_PATH
 //#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20)
 struct path {
@@ -548,15 +547,25 @@ static int elastio_snap_should_remove_suid(struct dentry *dentry)
 	#define vzalloc(size) __vmalloc(size, GFP_KERNEL | __GFP_HIGHMEM | __GFP_ZERO, PAGE_KERNEL)
 #endif
 
-#if !defined HAVE_MAKE_REQUEST_FN_IN_QUEUE && defined HAVE_BDOPS_SUBMIT_BIO
-	// Linux kernel version 5.9+
+#if !defined HAVE_MAKE_REQUEST_FN_IN_QUEUE && defined HAVE_BDOPS_SUBMIT_BIO_UINT
+	// Linux kernel version 5.9 - 5.15
 	// make_request_fn has been moved from the request queue structure to the
-	// block_device_operations as submit_bio function.
+	// block_device_operations as submit_bio function with UINT return type.
 	// See https://github.com/torvalds/linux/commit/c62b37d96b6eb3ec5ae4cbe00db107bf15aebc93
 	#define USE_BDOPS_SUBMIT_BIO
 
 	// Prototype bdev->fops->submit_bio but with the name already used in the code
 	typedef blk_qc_t (make_request_fn) (struct bio *bio);
+#endif
+
+#if !defined HAVE_MAKE_REQUEST_FN_IN_QUEUE && defined HAVE_BDOPS_SUBMIT_BIO
+	// Linux kernel version 5.16+
+	// submit_bio function in the block_device_operations structure has changed its return type to VOID.
+	// See https://github.com/torvalds/linux/commit/3e08773c3841e9db7a520908cc2b136a77d275ff#diff79b436371fdb3ddf0e7ad9bd4c9afe05160f7953438e650a77519b882904c56bR1181
+	#define USE_BDOPS_SUBMIT_BIO
+
+	// Prototype bdev->fops->submit_bio but with the name already used in the code
+	typedef void (make_request_fn) (struct bio *bio);
 #endif
 
 #ifndef USE_BDOPS_SUBMIT_BIO
@@ -599,6 +608,7 @@ static inline int elastio_snap_call_mrf(make_request_fn *fn, struct bio *bio){
 #elif defined HAVE_MAKE_REQUEST_FN_VOID
 	#define MRF_RETURN_TYPE void
 	#define MRF_RETURN(ret) return
+	#define MRF_RETURN_TYPE_VOID
 
 static inline int __elastio_snap_call_mrf(make_request_fn *fn, struct request_queue *q, struct bio *bio){
 	fn(q, bio);
@@ -610,8 +620,16 @@ static inline int elastio_snap_call_mrf(make_request_fn *fn, struct bio *bio){
 	return 0;
 }
 #else
-	#define MRF_RETURN_TYPE blk_qc_t
-	#define MRF_RETURN(ret) return BLK_QC_T_NONE
+	#ifdef HAVE_BDOPS_SUBMIT_BIO
+		// Linux kernel version 5.16+
+		#define MRF_RETURN_TYPE void
+		#define MRF_RETURN(ret) return
+		#define MRF_RETURN_TYPE_VOID
+	#else
+		// Linux kernel version 5.9 - 5.15
+		#define MRF_RETURN_TYPE blk_qc_t
+		#define MRF_RETURN(ret) return BLK_QC_T_NONE
+	#endif
 
 #ifndef USE_BDOPS_SUBMIT_BIO
 static inline int __elastio_snap_call_mrf(make_request_fn *fn, struct request_queue *q, struct bio *bio){
@@ -632,25 +650,35 @@ static inline MRF_RETURN_TYPE elastio_snap_null_mrf(struct request_queue *q, str
 #endif
 #endif
 
+#ifdef MRF_RETURN_TYPE_VOID
+	#define MRF_SET_RETURN_VALUE(mrf_func) mrf_func
+	#define MRF_RETURN_VALUE(mrf_func) mrf_func
+#else
+	#define MRF_SET_RETURN_VALUE(mrf_func) ret = mrf_func
+	#define MRF_RETURN_VALUE(mrf_func) return mrf_func
+#endif
+
 #ifdef USE_BDOPS_SUBMIT_BIO
 // Linux version 5.9+
 
-#ifdef HAVE_BLK_MQ_SUBMIT_BIO
 // The blk_mq_submit_bio function was exported in the kernels 5.9.0 - 5.9.1. And starting from the 5.9.2 it doesn't.
 // And compat HAVE_BLK_MQ_SUBMIT_BIO doesn't allow us to detect whether it exported or not.
 // Anyway this call by address works in all cases for the kernels 5.9+.
 // Also elastio_blk_mq_submit_bio is set to NULL in case if address of the blk_mq_submit_bio function is not detected for further checks.
-blk_qc_t (*elastio_blk_mq_submit_bio)(struct bio *) = (BLK_MQ_SUBMIT_BIO_ADDR != 0) ?
-	(blk_qc_t (*)(struct bio *)) (BLK_MQ_SUBMIT_BIO_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
-#endif
+MRF_RETURN_TYPE (*elastio_blk_mq_submit_bio)(struct bio *) = (BLK_MQ_SUBMIT_BIO_ADDR != 0) ?
+	(MRF_RETURN_TYPE (*)(struct bio *)) (BLK_MQ_SUBMIT_BIO_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
 
 static inline MRF_RETURN_TYPE elastio_snap_null_mrf(struct bio *bio){
+#ifndef MRF_RETURN_TYPE_VOID
 	percpu_ref_get(&elastio_snap_bio_bi_disk(bio)->queue->q_usage_counter);
-	return elastio_blk_mq_submit_bio(bio);
+#endif
+	MRF_RETURN_VALUE(elastio_blk_mq_submit_bio(bio));
 }
 
 static inline int elastio_snap_call_mrf(make_request_fn *fn, struct bio *bio){
-	return fn(bio);
+	int ret = 0;
+	MRF_SET_RETURN_VALUE(fn(bio));
+	return ret;
 }
 #endif
 
@@ -771,6 +799,41 @@ static inline void elastio_snap_bio_copy_dev(struct bio *dst, struct bio *src){
 #define dev_bioset(dev) (&(dev)->sd_bioset)
 #endif
 
+#ifndef __kernel_long_t
+typedef long __kernel_long_t;
+typedef unsigned long __kernel_ulong_t;
+#endif
+
+#ifndef HAVE_SI_MEM_AVAILABLE
+__kernel_ulong_t si_mem_available(void)
+{
+       struct sysinfo si;
+       si_meminfo(&si);
+       return si.freeram;
+}
+#endif
+
+#ifndef HAVE_BIO_FREE_PAGES
+static void bio_free_pages(struct bio *bio){
+	struct page *bv_page;
+
+#ifdef HAVE_BVEC_ITER_ALL
+	struct bvec_iter_all iter;
+	struct bio_vec *bvec;
+	bio_for_each_segment_all(bvec, bio, iter) {
+#else
+	int i = 0;
+	struct bio_vec *bvec;
+	bio_for_each_segment_all(bvec, bio, i) {
+#endif
+		bv_page = bvec->bv_page;
+		if (bv_page) {
+			__free_page(bv_page);
+		}
+	}
+}
+#endif
+
 /*********************************MACRO/PARAMETER DEFINITIONS*******************************/
 
 
@@ -799,13 +862,18 @@ static inline void elastio_snap_bio_copy_dev(struct bio *dst, struct bio *src){
 #define tracer_for_each(dev, i) for(i = ACCESS_ONCE(lowest_minor), dev = ACCESS_ONCE(snap_devices[i]); i <= ACCESS_ONCE(highest_minor); i++, dev = ACCESS_ONCE(snap_devices[i]))
 #define tracer_for_each_full(dev, i) for(i = 0, dev = ACCESS_ONCE(snap_devices[i]); i < elastio_snap_max_snap_devices; i++, dev = ACCESS_ONCE(snap_devices[i]))
 
+#ifdef USE_BDOPS_SUBMIT_BIO
+//returns true if tracing struct's base device fops matches that of bio
+#define tracer_matches_bio(dev, bio) (elastio_snap_get_bd_ops(dev->sd_base_dev) == elastio_snap_bio_bi_disk(bio)->fops)
+#else
 //returns true if tracing struct's base device queue matches that of bio
-#define tracer_queue_matches_bio(dev, bio) (bdev_get_queue((dev)->sd_base_dev) == elastio_snap_bio_get_queue(bio))
+#define tracer_matches_bio(dev, bio) (bdev_get_queue((dev)->sd_base_dev) == elastio_snap_bio_get_queue(bio))
+#endif
 
 //returns true if tracing struct's sector range matches the sector of the bio
 #define tracer_sector_matches_bio(dev, bio) (bio_sector(bio) >= (dev)->sd_sect_off && bio_sector(bio) < (dev)->sd_sect_off + (dev)->sd_size)
 
-//should be called along with *_queue_matches_bio to be valid. returns true if bio is a write, has a size,
+//should be called along with tracer_matches_bio to be valid. returns true if bio is a write, has a size,
 //tracing struct is in non-fail state, and the device's sector range matches the bio
 #define tracer_should_trace_bio(dev, bio) (bio_data_dir(bio) && !bio_is_discard(bio) && bio_size(bio) && !tracer_read_fail_state(dev) && tracer_sector_matches_bio(dev, bio))
 
@@ -824,7 +892,7 @@ static inline void elastio_snap_bio_copy_dev(struct bio *dst, struct bio *src){
 
 //macros for defining sector and block sizes
 #define SECTORS_PER_PAGE (PAGE_SIZE / SECTOR_SIZE)
-#define COW_SECTION_SIZE 4096
+#define COW_SECTION_SIZE PAGE_SIZE
 #define SECTORS_PER_BLOCK (COW_BLOCK_SIZE / SECTOR_SIZE)
 #define SECTOR_TO_BLOCK(sect) ((sect) / SECTORS_PER_BLOCK)
 #define BLOCK_TO_SECTOR(block) ((block) * SECTORS_PER_BLOCK)
@@ -939,6 +1007,13 @@ struct tracing_params{
 	struct bsector_list bio_sects;
 };
 
+#ifdef USE_BDOPS_SUBMIT_BIO
+struct tracing_ops {
+	struct block_device_operations *bd_ops;
+	atomic_t refs;
+};
+#endif
+
 struct cow_section{
 	char has_data; //zero if this section has mappings (on file or in memory)
 	unsigned long usage; //counter that keeps track of how often this section is used
@@ -971,6 +1046,8 @@ struct snap_device{
 	unsigned long sd_cache_size; //maximum cache size (in bytes)
 	atomic_t sd_refs; //number of users who have this device open
 	atomic_t sd_fail_code; //failure return code
+	atomic_t sd_memory_fail_code; //memory failure return code to signal memory usage has exceeded threshold
+	atomic_t sd_cow_fail_state; //cow file failure return code
 	sector_t sd_sect_off; //starting sector of base block device
 	sector_t sd_size; //size of device in sectors
 	struct request_queue *sd_queue; //snap device request queue
@@ -982,7 +1059,9 @@ struct snap_device{
 	struct inode *sd_cow_inode; //cow file inode
 #ifdef USE_BDOPS_SUBMIT_BIO
 	struct block_device_operations *sd_orig_ops; //block device's original operations sructure with the submit bio function
-	struct block_device_operations *sd_tracing_ops; //block device's operations sructure, copy of the original one, but with the submit bio function used for tracing
+	struct tracing_ops *sd_tracing_ops; //block device's operations sructure, copy of the original one,
+										//but with the submit bio function used for tracing,
+										//wrapped into tracing_ops structure with the ref counter.
 #endif
 	make_request_fn *sd_orig_mrf; //block device's original make request function
 	struct task_struct *sd_cow_thread; //thread for handling file read/writes
@@ -998,6 +1077,7 @@ struct snap_device{
 #endif
 	atomic64_t sd_submitted_cnt; //count of read clones submitted to underlying driver
 	atomic64_t sd_received_cnt; //count of read clones submitted to underlying driver
+	atomic64_t sd_processed_cnt; //count of read clones processed in snap_cow_thread()
 };
 
 static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
@@ -1031,6 +1111,7 @@ static void elastio_snap_proc_stop(struct seq_file *m, void *v);
 static int elastio_snap_proc_open(struct inode *inode, struct file *filp);
 static int elastio_snap_proc_release(struct inode *inode, struct file *file);
 
+#define WAIT_SUBMITTED_BIOS_MSEC 500
 // wait msec value to be at least 100 msec as wait loop uses it by msleep of (100) timeout pieces
 #define ELASTIO_SNAP_WAIT_FOR_RELEASE_MSEC              500
 #define ELASTIO_SNAP_WAIT_FOR_RELEASE_MAX_SLEEP_COUNT   100
@@ -1042,7 +1123,16 @@ static MRF_RETURN_TYPE snap_mrf(struct bio *bio);
 #endif
 
 static const struct block_device_operations snap_ops = {
-	.owner = THIS_MODULE,
+	/**
+	 * The 'owner' field is commented as it has proven itself
+	 * to cause problems with module refcount getting
+	 * unexpectedly incremented in rare situations.
+	 *
+	 * The issue was described here:
+	 * https://github.com/elastio/elastio-snap/issues/169
+	 */
+
+	/* .owner = THIS_MODULE, */
 	.open = snap_open,
 	.release = snap_release,
 #ifdef USE_BDOPS_SUBMIT_BIO
@@ -1099,8 +1189,22 @@ static void **system_call_table = NULL;
 static struct lock_class_key sd_bio_compl_lkclass;
 #endif
 
+#if !SYS_MOUNT_ADDR
+#if __X64_SYS_MOUNT_ADDR || __ARM64_SYS_MOUNT_ADDR
+#define USE_ARCH_MOUNT_FUNCS
+#else
+#warning "No mount function found"
+#endif
+#endif
+
+#ifdef USE_ARCH_MOUNT_FUNCS
+static asmlinkage long (*orig_mount)(struct pt_regs *regs);
+static asmlinkage long (*orig_umount)(struct pt_regs *regs);
+#else
 static asmlinkage long (*orig_mount)(char __user *, char __user *, char __user *, unsigned long, void __user *);
-static asmlinkage long (*orig_umount)(char __user *, int);
+static asmlinkage long (*orig_umount)(char __user *name, int flags);
+#endif
+
 #ifdef HAVE_SYS_OLDUMOUNT
 static asmlinkage long (*orig_oldumount)(char __user *);
 #endif
@@ -1115,6 +1219,28 @@ static inline int tracer_read_fail_state(const struct snap_device *dev){
 static inline void tracer_set_fail_state(struct snap_device *dev, int error){
 	smp_mb();
 	(void)atomic_cmpxchg(&dev->sd_fail_code, 0, error);
+	smp_mb();
+}
+
+static inline int tracer_read_memory_fail_state(const struct snap_device *dev){
+	smp_mb();
+	return atomic_read(&dev->sd_memory_fail_code);
+}
+
+static inline void tracer_set_memory_fail_state(struct snap_device *dev, int error){
+	smp_mb();
+	(void)atomic_cmpxchg(&dev->sd_memory_fail_code, 0, error);
+	smp_mb();
+}
+
+static inline int tracer_read_cow_fail_state(const struct snap_device *dev){
+	smp_mb();
+	return atomic_read(&dev->sd_cow_fail_state);
+}
+
+static inline void tracer_set_cow_fail_state(struct snap_device *dev, int error){
+	smp_mb();
+	(void)atomic_cmpxchg(&dev->sd_cow_fail_state, 0, error);
 	smp_mb();
 }
 
@@ -2616,6 +2742,56 @@ static int tp_add(struct tracing_params* tp, struct bio* bio) {
 	return 0;
 }
 
+/***************************TRACING OPS FUNCTIONS**************************/
+
+#ifdef USE_BDOPS_SUBMIT_BIO
+
+static MRF_RETURN_TYPE tracing_mrf(struct bio *);
+
+static int tracing_ops_alloc(struct snap_device *dev) {
+	struct tracing_ops *trops;
+
+	trops = kmalloc(sizeof(struct tracing_ops), GFP_KERNEL);
+	if(!trops) {
+		LOG_ERROR(-ENOMEM, "error allocating tracing ops struct");
+		return -ENOMEM;
+	}
+
+	trops->bd_ops = kmalloc(sizeof(struct block_device_operations), GFP_KERNEL);
+	if(!trops->bd_ops) {
+		kfree(trops);
+		LOG_ERROR(-ENOMEM, "error allocating block device ops struct");
+		return -ENOMEM;
+	}
+
+	memcpy(trops->bd_ops, elastio_snap_get_bd_ops(dev->sd_base_dev), sizeof(struct block_device_operations));
+
+	// Set tracing_mrf as submit_bio. All other content is already there copied from the original structure.
+	trops->bd_ops->submit_bio = tracing_mrf;
+	atomic_set(&trops->refs, 1);
+	dev->sd_tracing_ops = trops;
+
+	return 0;
+}
+
+static inline struct tracing_ops* tracing_ops_get(struct tracing_ops *trops) {
+	if (trops) atomic_inc(&trops->refs);
+	return trops;
+}
+
+// Multiple devices on the same disk are sharing block_device_operations structure.
+// This struct is replaced with the value of sd_tracing_ops in case if one of the partitions is tracked by this driver.
+// We should not free this struct here unless no other devices are tracked.
+static inline void tracing_ops_put(struct tracing_ops *trops) {
+	//drop a reference to the tracing ops
+	if(atomic_dec_and_test(&trops->refs)) {
+		kfree(trops->bd_ops);
+		kfree(trops);
+	}
+}
+
+#endif
+
 /****************************BIO HELPER FUNCTIONS*****************************/
 
 static inline struct inode *page_get_inode(struct page *pg){
@@ -2665,27 +2841,22 @@ static void bio_destructor_snap_dev(struct bio *bio){
 #endif
 
 static void bio_free_clone(struct bio *bio){
-	bio_iter_t iter;
-	bio_iter_bvec_t bvec;
-	struct page *bv_page;
-
-	bio_for_each_segment(bvec, bio, iter) {
-		bv_page = bio_iter_page(bio, iter);
-		if (bv_page) {
-			__free_page(bv_page);
-		}
-	}
+	bio_free_pages(bio);
 	bio_put(bio);
 }
 
-static int bio_make_read_clone(struct bio_set *bs, struct tracing_params *tp, struct bio *orig_bio, sector_t sect, unsigned int pages, struct bio **bio_out, unsigned int *bytes_added){
+static int bio_make_read_clone(struct block_device *bdev, struct bio_set *bs, struct tracing_params *tp, struct bio *orig_bio, sector_t sect, unsigned int pages, struct bio **bio_out, unsigned int *bytes_added){
 	int ret;
 	struct bio *new_bio;
 	struct page *pg;
 	unsigned int i, bytes, total = 0, actual_pages = (pages > BIO_MAX_PAGES)? BIO_MAX_PAGES : pages;
 
 	//allocate bio clone
+#ifdef HAVE_BIO_ALLOC_BIOSET_5
+	new_bio = bio_alloc_bioset(bdev, actual_pages, orig_bio->bi_opf, GFP_NOIO, bs);
+#else
 	new_bio = bio_alloc_bioset(GFP_NOIO, actual_pages, bs);
+#endif
 	if(!new_bio){
 		ret = -ENOMEM;
 		LOG_ERROR(ret, "error allocating bio clone - bs = %p, pages = %u", bs, pages);
@@ -2704,6 +2875,24 @@ static int bio_make_read_clone(struct bio_set *bs, struct tracing_params *tp, st
 	elastio_snap_set_bio_ops(new_bio, REQ_OP_READ, 0);
 	bio_sector(new_bio) = sect;
 	bio_idx(new_bio) = 0;
+
+	/*
+	 * The following flags were added
+	 * in v4.10 and in v5.12 respectively
+	 * and may affect bio processing sequence.
+	 * For this reason, we copy them from the
+	 * original bio
+	 */
+
+#if defined HAVE_BIO_REMAPPED
+	if (bio_flagged(orig_bio, BIO_REMAPPED))
+		bio_set_flag(new_bio, BIO_REMAPPED);
+#endif
+
+#if defined HAVE_BIO_THROTTLED
+	if (bio_flagged(orig_bio, BIO_THROTTLED))
+		bio_set_flag(new_bio, BIO_THROTTLED);
+#endif
 
 	//fill the bio with pages
 	for(i = 0; i < actual_pages; i++){
@@ -2783,8 +2972,12 @@ error:
 
 static int snap_handle_read_bio(const struct snap_device *dev, struct bio *bio){
 	int ret, mode;
-	bio_iter_t iter;
-	bio_iter_bvec_t bvec;
+	struct bio_vec *bvec;
+#ifdef HAVE_BVEC_ITER_ALL
+	struct bvec_iter_all iter;
+#else
+	int i = 0;
+#endif
 	void *orig_private;
 	bio_end_io_t *orig_end_io;
 	char *data;
@@ -2828,20 +3021,24 @@ static int snap_handle_read_bio(const struct snap_device *dev, struct bio *bio){
 		cur_sect = bio_sector(bio);
 
 		//iterate over all the segments and fill the bio. this more complex than writing since we don't have the block aligned guarantee
-		bio_for_each_segment(bvec, bio, iter){
+#ifdef HAVE_BVEC_ITER_ALL
+		bio_for_each_segment_all(bvec, bio, iter) {
+#else
+		bio_for_each_segment_all(bvec, bio, i) {
+#endif
 			//map the page into kernel space
-			data = kmap(bio_iter_page(bio, iter));
+			data = kmap(bvec->bv_page);
 
 			cur_block = (cur_sect * SECTOR_SIZE) / COW_BLOCK_SIZE;
 			block_off = (cur_sect * SECTOR_SIZE) % COW_BLOCK_SIZE;
-			bvec_off = bio_iter_offset(bio, iter);
+			bvec_off = bvec->bv_offset;
 
-			while(bvec_off < bio_iter_offset(bio, iter) + bio_iter_len(bio, iter)){
-				bytes_to_copy = min(bio_iter_offset(bio, iter) + bio_iter_len(bio, iter) - bvec_off, COW_BLOCK_SIZE - block_off);
+			while(bvec_off < bvec->bv_offset + bvec->bv_len){
+				bytes_to_copy = min(bvec->bv_offset + bvec->bv_len - bvec_off, COW_BLOCK_SIZE - block_off);
 				//check if the mapping exists
 				ret = cow_read_mapping(dev->sd_cow, cur_block, &block_mapping);
 				if(ret){
-					kunmap(bio_iter_page(bio, iter));
+					kunmap(bvec->bv_page);
 					goto out;
 				}
 
@@ -2849,7 +3046,7 @@ static int snap_handle_read_bio(const struct snap_device *dev, struct bio *bio){
 				if(block_mapping){
 					ret = cow_read_data(dev->sd_cow, data + bvec_off, block_mapping, block_off, bytes_to_copy);
 					if(ret){
-						kunmap(bio_iter_page(bio, iter));
+						kunmap(bvec->bv_page);
 						goto out;
 					}
 				}
@@ -2861,7 +3058,7 @@ static int snap_handle_read_bio(const struct snap_device *dev, struct bio *bio){
 			}
 
 			//unmap the page from kernel space
-			kunmap(bio_iter_page(bio, iter));
+			kunmap(bvec->bv_page);
 		}
 	}
 
@@ -2882,32 +3079,41 @@ out:
 
 static int snap_handle_write_bio(const struct snap_device *dev, struct bio *bio){
 	int ret;
-	bio_iter_t iter;
-	bio_iter_bvec_t bvec;
 	char *data;
 	sector_t start_block, end_block = SECTOR_TO_BLOCK(bio_sector(bio));
 
+	/*
+	 * Previously we iterated using bio_for_each_segment(), which
+	 * caused problems in case if our bio was split by the system.
+	 * It is replaced with bio_for_each_segment_all() as we own the
+	 * bio and can guarantee that we have access to its bvecs
+	 */
+#ifdef HAVE_BVEC_ITER_ALL
+	struct bvec_iter_all iter;
+	struct bio_vec *bvec;
 	//iterate through the bio and handle each segment (which is guaranteed to be block aligned)
-	bio_for_each_segment(bvec, bio, iter){
+	bio_for_each_segment_all(bvec, bio, iter) {
+#else
+	int i = 0;
+	struct bio_vec *bvec;
+	bio_for_each_segment_all(bvec, bio, i) {
+#endif
 		//find the start and end block
 		start_block = end_block;
-		end_block = start_block + (bio_iter_len(bio, iter) / COW_BLOCK_SIZE);
-
+		end_block = start_block + (bvec->bv_len / COW_BLOCK_SIZE);
 		//map the page into kernel space
-		data = kmap(bio_iter_page(bio, iter));
-
+		data = kmap(bvec->bv_page);
 		//loop through the blocks in the page
 		for(; start_block < end_block; start_block++){
 			//pas the block to the cow manager to be handled
 			ret = cow_write_current(dev->sd_cow, start_block, data);
 			if(ret){
-				kunmap(bio_iter_page(bio, iter));
+				kunmap(bvec->bv_page);
 				goto error;
 			}
 		}
-
 		//unmap the page
-		kunmap(bio_iter_page(bio, iter));
+		kunmap(bvec->bv_page);
 	}
 
 	return 0;
@@ -3011,12 +3217,16 @@ static int snap_cow_thread(void *data){
 				continue;
 			}
 
-			ret = snap_handle_write_bio(dev, bio);
-			if(ret){
-				LOG_ERROR(ret, "error handling write bio in kernel thread");
-				tracer_set_fail_state(dev, ret);
+			if (tracer_read_cow_fail_state(dev) == 0)
+			{
+				ret = snap_handle_write_bio(dev, bio);
+				if (ret) {
+					LOG_ERROR(ret, "error handling write bio in kernel thread");
+					tracer_set_cow_fail_state(dev, ret);
+				}
 			}
 
+			atomic64_inc(&dev->sd_processed_cnt);
 			bio_free_clone(bio);
 		}
 	}
@@ -3094,7 +3304,6 @@ static void __on_bio_read_complete(struct bio *bio, int err){
 	for(map = tp->bio_sects.head; map != NULL && map->bio != NULL; map = map->next) {
 		if(bio == map->bio){
 			bio_sector(bio) = map->sect - dev->sd_sect_off;
-			bio_size(bio) = map->size;
 			bio_idx(bio) = 0;
 			break;
 		}
@@ -3138,6 +3347,18 @@ error:
 	bio_free_clone(bio);
 }
 
+/** Resolves issue https://github.com/elastio/elastio-snap/issues/170 */
+static inline void wait_for_bio_complete(struct snap_device *dev)
+{
+	struct bio_queue *bq = &dev->sd_cow_bios;
+	if (!wait_event_interruptible_timeout(bq->event,
+			atomic64_read(&dev->sd_submitted_cnt) == atomic64_read(&dev->sd_processed_cnt),
+			msecs_to_jiffies(WAIT_SUBMITTED_BIOS_MSEC))) {
+		LOG_WARN("failed wait for all submitted BIOs to be processed after %d ms. bio submitted = %lld, bio processed = %lld",
+				WAIT_SUBMITTED_BIOS_MSEC, atomic64_read(&dev->sd_submitted_cnt), atomic64_read(&dev->sd_processed_cnt));
+	}
+}
+
 #ifdef HAVE_BIO_ENDIO_INT
 static int on_bio_read_complete(struct bio *bio, unsigned int bytes, int err){
 	if(bio->bi_size) return 1;
@@ -3168,10 +3389,10 @@ static int memory_is_too_low(struct snap_device *dev) {
 		totalram = si.totalram;
 	}
 
-	ret = ((si_mem_available() * 100) / totalram) < LOW_MEMORY_FAIL_PERCENT ? -ENOMEM : 0;
-	if (ret) {
-		LOG_ERROR(ret, "physical memory usage has exceeded %d%% threshold. entering error state", (100 - LOW_MEMORY_FAIL_PERCENT));
-		tracer_set_fail_state(dev, ret);
+	ret = ((si_mem_available() * 100) / totalram) < LOW_MEMORY_FAIL_PERCENT ? -ENOMEM : tracer_read_memory_fail_state(dev);
+	if (ret && tracer_read_memory_fail_state(dev) == 0) {
+		LOG_WARN("physical memory usage has exceeded %d%% threshold. cow file update is stopped", (100 - LOW_MEMORY_FAIL_PERCENT));
+		tracer_set_memory_fail_state(dev, ret);
 	}
 	return ret;
 }
@@ -3183,8 +3404,9 @@ static int snap_trace_bio(struct snap_device *dev, struct bio *bio){
 	sector_t start_sect, end_sect;
 	unsigned int bytes, pages;
 
-	//if we don't need to cow this bio just call the real mrf normally
-	if (!bio_needs_cow(bio, dev) || memory_is_too_low(dev)) {
+	//if we don't need to cow or physical memory usage has exceeded threshold or
+	//	COW file state is failed, this bio just call the real mrf normally
+	if (!bio_needs_cow(bio, dev) || memory_is_too_low(dev) || tracer_read_cow_fail_state(dev)) {
 		return elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
 	}
 
@@ -3199,7 +3421,7 @@ static int snap_trace_bio(struct snap_device *dev, struct bio *bio){
 
 retry:
 	//allocate and populate read bio clone. This bio may not have all the pages we need due to queue restrictions
-	ret = bio_make_read_clone(dev_bioset(dev), tp, bio, start_sect, pages, &new_bio, &bytes);
+	ret = bio_make_read_clone(dev->sd_base_dev, dev_bioset(dev), tp, bio, start_sect, pages, &new_bio, &bytes);
 	if(ret) goto error;
 
 	//set pointers for read clone
@@ -3328,7 +3550,7 @@ static MRF_RETURN_TYPE tracing_mrf(struct request_queue *q, struct bio *bio){
 
 	smp_rmb();
 	tracer_for_each(dev, i){	// for each snap device
-		if(!dev || test_bit(UNVERIFIED, &dev->sd_state) || !tracer_queue_matches_bio(dev, bio)) continue;
+		if(!dev || test_bit(UNVERIFIED, &dev->sd_state) || !tracer_matches_bio(dev, bio)) continue;
 
 		orig_mrf = dev->sd_orig_mrf;
 		if(elastio_snap_bio_op_flagged(bio, ELASTIO_SNAP_PASSTHROUGH)){
@@ -3351,13 +3573,13 @@ call_orig:
 		ret = elastio_snap_call_mrf(orig_mrf, bio);
 	} else if (elastio_snap_bio_bi_disk(bio)->fops->submit_bio) {
 		if (elastio_snap_bio_bi_disk(bio)->fops->submit_bio == tracing_mrf) {
-			ret = elastio_snap_null_mrf(bio);
+			MRF_SET_RETURN_VALUE(elastio_snap_null_mrf(bio));
 		} else {
-			ret = elastio_snap_bio_bi_disk(bio)->fops->submit_bio(bio);
+			MRF_SET_RETURN_VALUE(elastio_snap_bio_bi_disk(bio)->fops->submit_bio(bio));
 		}
 	} else {
 		LOG_WARN("error finding original_mrf and bio's submit_bio. both are empty");
-		ret = submit_bio_noacct(bio);
+		MRF_SET_RETURN_VALUE(submit_bio_noacct(bio));
 	}
 #else
 	if(orig_mrf) ret = __elastio_snap_call_mrf(orig_mrf, q, bio);
@@ -3465,12 +3687,14 @@ static int find_orig_mrf(struct block_device *bdev, make_request_fn **mrf){
 
 #ifdef USE_BDOPS_SUBMIT_BIO
 // Linux version 5.9+
-static int find_orig_fops(struct block_device *bdev, struct block_device_operations **ops, make_request_fn **mrf){
+static int find_orig_fops(struct block_device *bdev, struct block_device_operations **ops, make_request_fn **mrf, struct tracing_ops **tracing_ops){
 	int i;
 	struct snap_device *dev;
-	struct request_queue *q = bdev_get_queue(bdev);
 	struct block_device_operations *orig_ops = elastio_snap_get_bd_ops(bdev);
 	make_request_fn *orig_mrf = orig_ops->submit_bio;
+	char bdev_name[BDEVNAME_SIZE];
+
+	*tracing_ops = NULL;
 
 	if(orig_mrf != tracing_mrf){
 		if (!orig_mrf){
@@ -3480,19 +3704,28 @@ static int find_orig_fops(struct block_device *bdev, struct block_device_operati
 			}
 
 			orig_mrf = elastio_snap_null_mrf;
-			LOG_DEBUG("original mrf is empty, set to elastio_snap_null_mrf");
+			LOG_DEBUG("original mrf is empty, set to elastio_snap_null_mrf = %p; orig ops = %p", orig_mrf, orig_ops);
+		}
+		else {
+			LOG_DEBUG("original mrf is not empty = %p; orig ops = %p", orig_mrf, orig_ops);
 		}
 
 		*ops = orig_ops;
 		*mrf = orig_mrf;
 		return 0;
 	}
+	else {
+		LOG_DEBUG("original mrf is already replaced with the tracing_mrf = %p", tracing_mrf);
+	}
 
 	tracer_for_each(dev, i){
 		if(!dev || test_bit(UNVERIFIED, &dev->sd_state)) continue;
-		if(q == bdev_get_queue(dev->sd_base_dev)){
+		if(orig_ops == elastio_snap_get_bd_ops(dev->sd_base_dev)){
 			*ops = dev->sd_orig_ops;
 			*mrf = dev->sd_orig_mrf;
+			*tracing_ops = tracing_ops_get(dev->sd_tracing_ops);
+			bdevname(dev->sd_base_dev, bdev_name);
+			LOG_DEBUG("found already traced device %s with the same original bd_ops. orig mrf = %p; orig ops = %p; tracing ops = %p", bdev_name, *mrf, *ops, *tracing_ops);
 			return 0;
 		}
 	}
@@ -3506,7 +3739,11 @@ static int find_orig_fops(struct block_device *bdev, struct block_device_operati
 static int __tracer_should_reset_mrf(const struct snap_device *dev){
 	int i;
 	struct snap_device *cur_dev;
+#ifndef USE_BDOPS_SUBMIT_BIO
 	struct request_queue *q = bdev_get_queue(dev->sd_base_dev);
+#else
+	struct block_device_operations *ops = elastio_snap_get_bd_ops(dev->sd_base_dev);
+#endif
 
 	if(elastio_snap_get_bd_mrf(dev->sd_base_dev) != tracing_mrf) return 0;
 	if(dev != snap_devices[dev->sd_minor]) return 0;
@@ -3515,7 +3752,11 @@ static int __tracer_should_reset_mrf(const struct snap_device *dev){
 	if(snap_devices){
 		tracer_for_each(cur_dev, i){
 			if(!cur_dev || test_bit(UNVERIFIED, &cur_dev->sd_state) || cur_dev == dev) continue;
+#ifndef USE_BDOPS_SUBMIT_BIO
 			if(q == bdev_get_queue(cur_dev->sd_base_dev)) return 0;
+#else
+			if(ops == elastio_snap_get_bd_ops(cur_dev->sd_base_dev)) return 0;
+#endif
 		}
 	}
 
@@ -3560,7 +3801,7 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 	smp_wmb();
 	if(dev){
 		LOG_DEBUG("starting tracing");
-		*dev_ptr = dev;
+		if (dev_ptr) *dev_ptr = dev;
 		smp_wmb();
 #ifdef USE_BDOPS_SUBMIT_BIO
 		if(new_ops) elastio_snap_set_bd_ops(bdev, new_ops);
@@ -3579,7 +3820,7 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 // Linux version older than 5.8
 		if(new_mrf) elastio_snap_set_bd_mrf(bdev, new_mrf);
 #endif
-		*dev_ptr = dev;
+		if (dev_ptr) *dev_ptr = dev;
 		smp_wmb();
 	}
 
@@ -3606,6 +3847,8 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 static void __tracer_init(struct snap_device *dev){
 	LOG_DEBUG("initializing tracer");
 	atomic_set(&dev->sd_fail_code, 0);
+	atomic_set(&dev->sd_memory_fail_code, 0);
+	atomic_set(&dev->sd_cow_fail_state, 0);
 	bio_queue_init(&dev->sd_cow_bios);
 	bio_queue_init(&dev->sd_orig_bios);
 	sset_queue_init(&dev->sd_pending_ssets);
@@ -3876,6 +4119,11 @@ static void __tracer_destroy_snap(struct snap_device *dev){
 #else
 		if(dev->sd_gd->flags & GENHD_FL_UP) del_gendisk(dev->sd_gd);
 #endif
+		if(dev->sd_queue){
+			LOG_DEBUG("freeing request queue");
+			blk_cleanup_queue(dev->sd_queue);
+			dev->sd_queue = NULL;
+		}
 		put_disk(dev->sd_gd);
 		dev->sd_gd = NULL;
 	}
@@ -3987,12 +4235,25 @@ static int __tracer_setup_snap(struct snap_device *dev, unsigned int minor, stru
 	dev->sd_gd->flags |= GENHD_FL_NO_PART_SCAN;
 #endif
 
+#ifdef HAVE_GENHD_FL_NO_PART
+	// the flag has been renamed in 5.17
+	dev->sd_gd->flags |= GENHD_FL_NO_PART;
+#endif
+
 	//set the device as read-only
 	set_disk_ro(dev->sd_gd, 1);
 
 	//register gendisk with the kernel
 	LOG_DEBUG("adding disk");
+#ifdef HAVE_ADD_DISK_INT
+	ret = add_disk(dev->sd_gd);
+	if(ret){
+		LOG_ERROR(ret, "error adding disk");
+		goto error;
+	}
+#else
 	add_disk(dev->sd_gd);
+#endif
 
 	LOG_DEBUG("starting mrf kernel thread");
 	dev->sd_mrf_thread = kthread_run(snap_mrf_thread, dev, SNAP_MRF_THREAD_NAME_FMT, minor);
@@ -4005,6 +4266,7 @@ static int __tracer_setup_snap(struct snap_device *dev, unsigned int minor, stru
 
 	atomic64_set(&dev->sd_submitted_cnt, 0);
 	atomic64_set(&dev->sd_received_cnt, 0);
+	atomic64_set(&dev->sd_processed_cnt, 0);
 
 	return 0;
 
@@ -4067,25 +4329,30 @@ static void minor_range_include(unsigned int minor){
 }
 
 static inline void free_mrf_and_ops(struct snap_device *dev){
-	dev->sd_orig_mrf = NULL;
 #ifdef USE_BDOPS_SUBMIT_BIO
-	dev->sd_orig_ops = NULL;
 	if (dev->sd_tracing_ops) {
-		kfree(dev->sd_tracing_ops);
+		tracing_ops_put(dev->sd_tracing_ops);
 		dev->sd_tracing_ops = NULL;
 	}
+	dev->sd_orig_ops = NULL;
 #endif
+	dev->sd_orig_mrf = NULL;
 }
 
 static void __tracer_destroy_tracing(struct snap_device *dev){
 	if(dev->sd_orig_mrf){
-		LOG_DEBUG("replacing make_request_fn if needed");
+		if(__tracer_should_reset_mrf(dev)) {
+			LOG_DEBUG("replacing make_request_fn");
 #ifdef USE_BDOPS_SUBMIT_BIO
-		if(__tracer_should_reset_mrf(dev)) __tracer_transition_tracing(NULL, dev->sd_base_dev, dev->sd_orig_ops, &snap_devices[dev->sd_minor]);
+			__tracer_transition_tracing(NULL, dev->sd_base_dev, dev->sd_orig_ops, &snap_devices[dev->sd_minor]);
 #else
-		if(__tracer_should_reset_mrf(dev)) __tracer_transition_tracing(NULL, dev->sd_base_dev, dev->sd_orig_mrf, &snap_devices[dev->sd_minor]);
+			__tracer_transition_tracing(NULL, dev->sd_base_dev, dev->sd_orig_mrf, &snap_devices[dev->sd_minor]);
 #endif
-		else __tracer_transition_tracing(NULL, dev->sd_base_dev, NULL, &snap_devices[dev->sd_minor]);
+		}
+		else {
+			LOG_DEBUG("no need to replace make_request_fn");
+			__tracer_transition_tracing(NULL, dev->sd_base_dev, NULL, &snap_devices[dev->sd_minor]);
+		}
 
 		smp_wmb();
 		free_mrf_and_ops(dev);
@@ -4112,7 +4379,7 @@ static void __tracer_setup_tracing_unverified(struct snap_device *dev, unsigned 
 
 
 static int __tracer_setup_tracing(struct snap_device *dev, unsigned int minor){
-	int ret;
+	int ret = 0;
 
 	dev->sd_minor = minor;
 	minor_range_include(minor);
@@ -4121,30 +4388,32 @@ static int __tracer_setup_tracing(struct snap_device *dev, unsigned int minor){
 	LOG_DEBUG("getting the base block device's make_request_fn");
 #ifndef USE_BDOPS_SUBMIT_BIO
 	ret = find_orig_mrf(dev->sd_base_dev, &dev->sd_orig_mrf);
-#else
-	ret = find_orig_fops(dev->sd_base_dev, &dev->sd_orig_ops, &dev->sd_orig_mrf);
-#endif
 	if(ret) goto error;
 
-#ifndef USE_BDOPS_SUBMIT_BIO
 	ret = __tracer_transition_tracing(dev, dev->sd_base_dev, tracing_mrf, &snap_devices[minor]);
 #else
 	if (!dev->sd_tracing_ops) {
-		dev->sd_tracing_ops = kmalloc(sizeof(struct block_device_operations), GFP_KERNEL);
+		// Multiple devices on the same disk are sharing block_device_operations struct.
+		// The next call will set a pointer to the dev->sd_tracing_ops if some device at the same disk is
+		// already tracked by the driver. And we'll reuse the existing struct in this case.
+		ret = find_orig_fops(dev->sd_base_dev, &dev->sd_orig_ops, &dev->sd_orig_mrf, &dev->sd_tracing_ops);
+		if(ret) goto error;
+
 		if (!dev->sd_tracing_ops) {
-			ret = -ENOMEM;
-			LOG_ERROR(ret, "error allocating tracing ops");
-			goto error;
+			LOG_DEBUG("allocating tracing ops for device with minor %i", minor);
+			ret = tracing_ops_alloc(dev);
+			if (ret) goto error;
+		}
+		else {
+			LOG_DEBUG("using already existing tracing ops for device with minor %i", minor);
 		}
 
-		memcpy(dev->sd_tracing_ops, elastio_snap_get_bd_ops(dev->sd_base_dev), sizeof(struct block_device_operations));
-
-		// set tracing_mrf as submit_bio and owner. all other content is already there copied from the original structure
-		dev->sd_tracing_ops->owner = THIS_MODULE;
-		dev->sd_tracing_ops->submit_bio = tracing_mrf;
+		ret = __tracer_transition_tracing(dev, dev->sd_base_dev, dev->sd_tracing_ops->bd_ops, &snap_devices[minor]);
+	}
+	else {
+		LOG_DEBUG("device with minor %i already has sd_tracing_ops", minor);
 	}
 
-	ret = __tracer_transition_tracing(dev, dev->sd_base_dev, dev->sd_tracing_ops, &snap_devices[minor]);
 #endif
 
 	if(ret) goto error;
@@ -4389,6 +4658,13 @@ static void tracer_elastio_snap_info(const struct snap_device *dev, struct elast
 	info->minor = dev->sd_minor;
 	info->state = dev->sd_state;
 	info->error = tracer_read_fail_state(dev);
+	if (info->error == 0) {
+		info->error = tracer_read_memory_fail_state(dev);
+		if (info->error == 0)
+		{
+			info->error = tracer_read_cow_fail_state(dev);
+		}
+	}
 	info->cache_size = (dev->sd_cache_size)? dev->sd_cache_size : elastio_snap_cow_max_memory_default;
 	strlcpy(info->cow, dev->sd_cow_path, PATH_MAX);
 	strlcpy(info->bdev, dev->sd_bdev_path, PATH_MAX);
@@ -4533,6 +4809,8 @@ static int ioctl_destroy(unsigned int minor){
 	}
 
 	dev = snap_devices[minor];
+	wait_for_bio_complete(dev);
+
 	tracer_destroy(snap_devices[minor]);
 	kfree(dev);
 
@@ -4550,10 +4828,14 @@ static int ioctl_transition_inc(unsigned int minor){
 	if(ret) goto error;
 
 	dev = snap_devices[minor];
+	wait_for_bio_complete(dev);
 
 	//check that the device is not in the fail state
-	if(tracer_read_fail_state(dev)){
-		ret = -EINVAL;
+	ret = tracer_read_fail_state(dev);
+	if (ret == 0) {
+		ret = tracer_read_cow_fail_state(dev);
+	}
+	if (ret) {
 		LOG_ERROR(ret, "device specified is in the fail state");
 		goto error;
 	}
@@ -4586,6 +4868,7 @@ static int ioctl_transition_snap(unsigned int minor, const char *cow_path, unsig
 	if(ret) goto error;
 
 	dev = snap_devices[minor];
+	wait_for_bio_complete(dev);
 
 	//check that the device is not in the fail state
 	if(tracer_read_fail_state(dev)){
@@ -4622,6 +4905,7 @@ static int ioctl_reconfigure(unsigned int minor, unsigned long cache_size){
 	if(ret) goto error;
 
 	dev = snap_devices[minor];
+	wait_for_bio_complete(dev);
 
 	//check that the device is not in the fail state
 	if(tracer_read_fail_state(dev)){
@@ -5176,18 +5460,50 @@ static void post_umount_check(int dormant_ret, long umount_ret, unsigned int idx
 	LOG_DEBUG("post umount check succeeded");
 }
 
+#ifdef USE_ARCH_MOUNT_FUNCS
+static int mount_hook_extract_params(struct pt_regs *regs, char **dev_name, char **dir_name, unsigned long *flags)
+{
+	if (!regs || !dev_name || !dir_name || !flags) return -EINVAL;
+
+#if defined(CONFIG_ARM64)
+	*dev_name = (char *) regs->regs[0];
+	*dir_name = (char *) regs->regs[1];
+	*flags = regs->regs[3];
+#elif defined(CONFIG_X86_64)
+	*dev_name = (char *) regs->di;
+	*dir_name = (char *) regs->si;
+	*flags = regs->r10;
+#endif
+	return 0;
+}
+
+static asmlinkage long mount_hook(struct pt_regs *regs){
+#else
 static asmlinkage long mount_hook(char __user *dev_name, char __user *dir_name, char __user *type, unsigned long flags, void __user *data){
+#endif
 	int ret;
 	int ret_dev;
 	int ret_dir;
 	long sys_ret;
 	unsigned int idx;
-	unsigned long real_flags = flags;
 	char *buff_dev_name = NULL;
 	char *buff_dir_name = NULL;
+	unsigned long real_flags;
 
-	//get rid of the magic value if its present
-	if((real_flags & MS_MGC_MSK) == MS_MGC_VAL) real_flags &= ~MS_MGC_MSK;
+#ifdef USE_ARCH_MOUNT_FUNCS
+	unsigned long flags;
+	char *dir_name;
+	char *dev_name;
+
+	ret = mount_hook_extract_params(regs, &dev_name, &dir_name, &flags);
+	if (ret) {
+		// should never happen
+		LOG_ERROR(ret, "couldn't extract mount params");
+		return ret;
+	}
+#endif
+
+	real_flags = flags;
 
 	buff_dev_name = kmalloc(PATH_MAX, GFP_ATOMIC);
 	buff_dir_name = kmalloc(PATH_MAX, GFP_ATOMIC);
@@ -5198,27 +5514,47 @@ static asmlinkage long mount_hook(char __user *dev_name, char __user *dir_name, 
 			kfree(buff_dir_name);
 		return -ENOMEM;
 	}
-	ret_dev=copy_from_user(buff_dev_name,dev_name,PATH_MAX);
-	ret_dir=copy_from_user(buff_dir_name,dir_name,PATH_MAX);
+
+	ret_dev = copy_from_user(buff_dev_name, dev_name, PATH_MAX);
+	ret_dir = copy_from_user(buff_dir_name, dir_name, PATH_MAX);
+
 	if(ret_dev || ret_dir)
 		LOG_DEBUG("detected block device Get mount params error!");
 	else
 		LOG_DEBUG("detected block device mount: %s -> %s : 0x%lx", buff_dev_name,
 			buff_dir_name, real_flags);
+
 	kfree(buff_dev_name);
 	kfree(buff_dir_name);
 
+	//get rid of the magic value if its present
+	if((real_flags & MS_MGC_MSK) == MS_MGC_VAL) real_flags &= ~MS_MGC_MSK;
+
 	if(real_flags & (MS_BIND | MS_SHARED | MS_PRIVATE | MS_SLAVE | MS_UNBINDABLE | MS_MOVE) || ((real_flags & MS_RDONLY) && !(real_flags & MS_REMOUNT))){
 		//bind, shared, move, or new read-only mounts it do not affect the state of the driver
+#ifdef USE_ARCH_MOUNT_FUNCS
+		sys_ret = orig_mount(regs);
+#else
 		sys_ret = orig_mount(dev_name, dir_name, type, flags, data);
+#endif
 	}else if((real_flags & MS_RDONLY) && (real_flags & MS_REMOUNT)){
 		//we are remounting read-only, same as umounting as far as the driver is concerned
 		ret = handle_bdev_mount_nowrite(dir_name, 0, &idx);
+
+#ifdef USE_ARCH_MOUNT_FUNCS
+		sys_ret = orig_mount(regs);
+#else
 		sys_ret = orig_mount(dev_name, dir_name, type, flags, data);
+#endif
+
 		post_umount_check(ret, sys_ret, idx, dir_name);
 	}else{
 		//new read-write mount
+#ifdef USE_ARCH_MOUNT_FUNCS
+		sys_ret = orig_mount(regs);
+#else
 		sys_ret = orig_mount(dev_name, dir_name, type, flags, data);
+#endif
 		if(!sys_ret) handle_bdev_mounted_writable(dir_name, &idx);
 	}
 
@@ -5227,25 +5563,62 @@ static asmlinkage long mount_hook(char __user *dev_name, char __user *dir_name, 
 	return sys_ret;
 }
 
+#ifdef USE_ARCH_MOUNT_FUNCS
+static int umount_hook_extract_params(struct pt_regs *regs, char **dev_name, unsigned long *flags)
+{
+	if (!regs || !dev_name || !flags) return -EINVAL;
+
+#if defined(CONFIG_ARM64)
+	*dev_name = (char *) regs->regs[0];
+	*flags = regs->regs[1];
+#elif defined(CONFIG_X86_64)
+	*dev_name = (char *) regs->di;
+	*flags = regs->si;
+#endif
+	return 0;
+}
+
+static asmlinkage long umount_hook(struct pt_regs *regs){
+#else
 static asmlinkage long umount_hook(char __user *name, int flags){
+#endif
 	int ret;
 	long sys_ret;
 	unsigned int idx;
 	char* buff_dev_name = NULL;
 
+#ifdef USE_ARCH_MOUNT_FUNCS
+	unsigned long flags;
+	char *name;
+
+	ret = umount_hook_extract_params(regs, &name, &flags);
+	if (ret) {
+		// should never happen
+		LOG_ERROR(ret, "couldn't extract umount params");
+		return ret;
+	}
+#endif
+
 	buff_dev_name = kmalloc(PATH_MAX, GFP_ATOMIC);
 	if(!buff_dev_name) {
 		return -ENOMEM;
 	}
-	ret=copy_from_user(buff_dev_name, name, PATH_MAX);
+
+	ret = copy_from_user(buff_dev_name, name, PATH_MAX);
 	if(ret)
-		LOG_DEBUG("detected block device umount error:%d", ret);
+		LOG_DEBUG("detected block device umount error: %d", ret);
 	else
-		LOG_DEBUG("detected block device umount: %s : %d", buff_dev_name, flags);
+		LOG_DEBUG("detected block device umount: %s : %ld", buff_dev_name, (unsigned long) flags);
+
 	kfree(buff_dev_name);
 
 	ret = handle_bdev_mount_nowrite(name, flags, &idx);
+
+#ifdef USE_ARCH_MOUNT_FUNCS
+	sys_ret = orig_umount(regs);
+#else
 	sys_ret = orig_umount(name, flags);
+#endif
 	post_umount_check(ret, sys_ret, idx, name);
 
 	LOG_DEBUG("umount returned: %ld", sys_ret);
@@ -5281,22 +5654,96 @@ static asmlinkage long oldumount_hook(char __user *name){
 }
 #endif
 
-//#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
+static void **find_sys_call_table(void){
+	long long mount_address = 0;
+	long long umount_address = 0;
+	long long offset = 0;
+	void **sct;
+
+	if(!SYS_CALL_TABLE_ADDR)
+		return NULL;
+
+// On kernels after 4.9+, sys_mount() & sys_umount()
+// have been switched to the architecture-dependent
+// functions, f.e., __x86_64_sys_mount() or __arm64_sys_umount()
+// These functions use 'struct pt_regs *' as a parameter.
+// Hence, we added additional define USE_ARCH_MOUNT_FUNCS
+// to support mount hooks on different kernels
+#ifndef USE_ARCH_MOUNT_FUNCS
+	mount_address = SYS_MOUNT_ADDR;
+	umount_address = SYS_UMOUNT_ADDR;
+#else
+#if __X64_SYS_MOUNT_ADDR
+	mount_address = __X64_SYS_MOUNT_ADDR;
+	umount_address = __X64_SYS_UMOUNT_ADDR;
+#elif __ARM64_SYS_MOUNT_ADDR
+	mount_address = __ARM64_SYS_MOUNT_ADDR;
+	umount_address = __ARM64_SYS_UMOUNT_ADDR;
+#else
+#error "Architecture not supported"
+#endif
+#endif
+
+	if (!mount_address || !umount_address)
+		return NULL;
+
+	offset = ((void *)kfree) - (void *)KFREE_ADDR;
+	sct = (void **)SYS_CALL_TABLE_ADDR + offset / sizeof(void **);
+
+	if(sct[__NR_mount] != (void **)mount_address + offset / sizeof(void **)) return NULL;
+	if(sct[__NR_umount2] != (void **)umount_address + offset / sizeof(void **)) return NULL;
+#ifdef HAVE_SYS_OLDUMOUNT
+	if(sct[__NR_umount] != (void **)SYS_OLDUMOUNT_ADDR + offset / sizeof(void **)) return NULL;
+#endif
+
+	LOG_DEBUG("system call table located at 0x%p", sct);
+
+	return sct;
+}
+
+#ifdef CONFIG_ARM64
+static int set_page_rw(unsigned long addr)
+{
+	int (*__change_memory_common)(unsigned long, unsigned long,
+			pgprot_t, pgprot_t) = (__CHANGE_MEMORY_COMMON_ADDR != 0) ?
+        (int (*)(unsigned long, unsigned long, pgprot_t, pgprot_t)) (__CHANGE_MEMORY_COMMON_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
+
+	if (!__change_memory_common) {
+		LOG_ERROR(-EFAULT, "error getting __change_memory_common address");
+		return -EFAULT;
+	}
+
+    vm_unmap_aliases();
+    return __change_memory_common(addr, PAGE_SIZE, __pgprot(PTE_WRITE), __pgprot(PTE_RDONLY));
+}
+
+static int set_page_ro(unsigned long addr)
+{
+	int (*__change_memory_common)(unsigned long, unsigned long,
+			pgprot_t, pgprot_t) = (__CHANGE_MEMORY_COMMON_ADDR != 0) ?
+        (int (*)(unsigned long, unsigned long, pgprot_t, pgprot_t)) (__CHANGE_MEMORY_COMMON_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
+
+	if (!__change_memory_common) {
+		LOG_ERROR(-EFAULT, "error getting __change_memory_common address");
+		return -EFAULT;
+	}
+
+    vm_unmap_aliases();
+    return __change_memory_common(addr, PAGE_SIZE, __pgprot(PTE_RDONLY), __pgprot(PTE_WRITE));
+}
+#endif
+
+#ifdef CONFIG_X86_64
+
 #ifndef X86_CR0_WP
 #define X86_CR0_WP (1UL << 16)
 #endif
 
 static inline void wp_cr0(unsigned long cr0) {
-#ifdef USE_BDOPS_SUBMIT_BIO
 	// Enabling/disabling approach with usage of the write_cr0 function stopped to work somewhere starting from the kernels 5.X (maybe 5.3)
 	// after this patch https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=8dbec27a242cd3e2816eeb98d3237b9f57cf6232
-	// Hence there is a workaround.
-	// The USE_BDOPS_SUBMIT_BIO have to be replaced with something else if this workaround is necessary for some other 5.X kernels.
-	// Now it's used just for the 5.9+ kernels.
+	// This is a simple workaround
 	__asm__ __volatile__ ("mov %0, %%cr0": "+r" (cr0));
-#else
-	write_cr0(cr0);
-#endif
 }
 
 static inline unsigned long disable_page_protection(void) {
@@ -5309,73 +5756,100 @@ static inline unsigned long disable_page_protection(void) {
 static inline void reenable_page_protection(unsigned long cr0) {
 	wp_cr0(cr0);
 }
-
-static void **find_sys_call_table(void){
-	long long offset;
-	void **sct;
-
-	if(!SYS_CALL_TABLE_ADDR || !SYS_MOUNT_ADDR || !SYS_UMOUNT_ADDR) return NULL;
-
-	offset = ((void *)kfree) - (void *)KFREE_ADDR;
-	sct = (void **)SYS_CALL_TABLE_ADDR + offset / sizeof(void **);
-
-	if(sct[__NR_mount] != (void **)SYS_MOUNT_ADDR + offset / sizeof(void **)) return NULL;
-	if(sct[__NR_umount2] != (void **)SYS_UMOUNT_ADDR + offset / sizeof(void **)) return NULL;
-#ifdef HAVE_SYS_OLDUMOUNT
-	if(sct[__NR_umount] != (void **)SYS_OLDUMOUNT_ADDR + offset / sizeof(void **)) return NULL;
 #endif
 
-	LOG_DEBUG("system call table located at 0x%p", sct);
+/** generic function to set a system call table to a read-write mode */
+static inline int syscall_mode_rw(void **syscall_table, int syscall_num, unsigned long *flags)
+{
+	if (!flags) return -EINVAL;
 
-	return sct;
+#if defined(CONFIG_X86_64)
+	*flags = disable_page_protection();
+	return 0;
+#elif defined(CONFIG_ARM64)
+	return set_page_rw((unsigned long) (syscall_table + syscall_num));
+#else
+	return -EOPNOTSUPP;
+#endif
 }
 
-#define set_syscall(sys_nr, orig_call_save, new_call) 		\
-	orig_call_save = system_call_table[sys_nr];				\
-	system_call_table[sys_nr] = new_call;
+/** generic function to set a system call table to a read-only mode */
+static inline long syscall_mode_ro(void **syscall_table, int syscall_num, unsigned long flags)
+{
+#if defined(CONFIG_X86_64)
+	reenable_page_protection(flags);
+#elif defined(CONFIG_ARM64)
+	return set_page_ro((unsigned long) (syscall_table + syscall_num));
+#else
+	return -EOPNOTSUPP;
+#endif
+	return 0;
+}
 
-#define restore_syscall(sys_nr, orig_call_save) system_call_table[sys_nr] = orig_call_save;
+static inline int syscall_set_hook(void **syscall_table,
+		int syscall_num, void **orig_hook, void *new_hook)
+{
+	int ret;
+	unsigned long flags;
 
-static void restore_system_call_table(void){
-	unsigned long cr0;
+	ret = syscall_mode_rw(syscall_table, syscall_num, &flags);
+	if (ret) {
+		LOG_ERROR(ret, "failed to switch the system call table to the read-write mode");
+		return ret;
+	}
 
+	if (orig_hook)
+		*orig_hook = syscall_table[syscall_num];
+
+	syscall_table[syscall_num] = new_hook;
+	syscall_mode_ro(syscall_table, syscall_num, flags);
+
+	return 0;
+}
+
+static void restore_system_call_table(void)
+{
 	if(system_call_table){
 		LOG_DEBUG("restoring system call table");
-		//break back into the syscall table and replace the hooks we stole
+
 		preempt_disable();
-		cr0 = disable_page_protection();
-		restore_syscall(__NR_mount, orig_mount);
-		restore_syscall(__NR_umount2, orig_umount);
+		// break back into the syscall table and replace the hooks we stole
+		syscall_set_hook(system_call_table, __NR_mount, NULL, orig_mount);
+		syscall_set_hook(system_call_table, __NR_umount2, NULL, orig_umount);
 #ifdef HAVE_SYS_OLDUMOUNT
-		restore_syscall(__NR_umount, orig_oldumount);
+		syscall_set_hook(system_call_table, __NR_umount, NULL, orig_oldmount);
 #endif
-		reenable_page_protection(cr0);
 		preempt_enable();
 	}
 }
 
-static int hook_system_call_table(void){
-	unsigned long cr0;
+static int hook_system_call_table(void)
+{
+	int ret = 0;
 
 	//find sys_call_table
 	LOG_DEBUG("locating system call table");
 	system_call_table = find_sys_call_table();
 	if(!system_call_table){
-		LOG_WARN("failed to locate system call table, persistence disabled");
+		LOG_ERROR(-ENOENT, "failed to locate system call table, persistence disabled");
+
+		if (!SYS_CALL_TABLE_ADDR) {
+			LOG_WARN("make sure that CONFIG_KALLSYMS_ALL is enabled");
+		}
+
 		return -ENOENT;
 	}
 
-	//break into the syscall table and steal the hooks we need
 	preempt_disable();
-	cr0 = disable_page_protection();
-	set_syscall(__NR_mount, orig_mount, mount_hook);
-	set_syscall(__NR_umount2, orig_umount, umount_hook);
+	//break into the syscall table and steal the hooks we need
+	ret = syscall_set_hook(system_call_table, __NR_mount, (void **) &orig_mount, mount_hook);
+	ret |= syscall_set_hook(system_call_table, __NR_umount2, (void **) &orig_umount, umount_hook);
 #ifdef HAVE_SYS_OLDUMOUNT
-	set_syscall(__NR_umount, orig_oldumount, oldumount_hook);
+	ret |= syscall_set_hook(system_call_table, __NR_umount, (void **) &orig_oldumount, oldumount_hook);
 #endif
-	reenable_page_protection(cr0);
 	preempt_enable();
-	return 0;
+
+	return ret;
 }
 
 /***************************BLOCK DEVICE DRIVER***************************/
@@ -5519,7 +5993,7 @@ static void elastio_snap_wait_for_release(struct snap_device *dev)
 	// Linux kernel version 5.14+
 	int prev_state = READ_ONCE(current->__state);
 #else
-	int prev_state = READ_ONCE(current->state);
+	int prev_state = ACCESS_ONCE(current->state);
 #endif
 	int i = 0;
 	set_current_state(TASK_INTERRUPTIBLE);
@@ -5620,7 +6094,12 @@ static int __init agent_init(void){
 		goto error;
 	}
 
-	if(elastio_snap_may_hook_syscalls) (void)hook_system_call_table();
+	if (elastio_snap_may_hook_syscalls) {
+		ret = hook_system_call_table();
+		if (ret) {
+			LOG_ERROR(ret, "couldn't hook the syscall table");
+		}
+	}
 
 	return 0;
 
