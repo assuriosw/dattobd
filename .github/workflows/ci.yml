@@ -24,7 +24,7 @@ jobs:
       matrix:
         distro: [
           amazon2,
-          centos7, centos8,
+          centos7, centos8, centos9,
           debian8, debian9, debian10, debian11,
           fedora31, fedora32, fedora34, fedora35, fedora36,
           ubuntu2004, ubuntu2204
@@ -34,6 +34,8 @@ jobs:
           - distro: amazon2
             arch: arm64
           - distro: centos8
+            arch: arm64
+          - distro: centos9
             arch: arm64
           - distro: debian10
             arch: arm64
@@ -48,7 +50,7 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Set ENV
         if: always()
@@ -326,7 +328,7 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Make manifest
         run: echo $GITHUB_RUN_NUMBER > latest && cat latest | grep -E '^[0-9]+$'
@@ -351,7 +353,7 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Dispatch packaging repo
         env:
