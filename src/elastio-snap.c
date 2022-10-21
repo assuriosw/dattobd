@@ -138,7 +138,6 @@ struct request_queue* (*elastio_blk_alloc_queue)(int node_id) = (BLK_ALLOC_QUEUE
 struct super_block* (*elastio_snap_get_super)(struct block_device *) = (GET_SUPER_ADDR != 0) ?
 	(struct super_block* (*)(struct block_device*)) (GET_SUPER_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
 
-
 struct gendisk* (*elastio_snap_alloc_disk_node)(struct request_queue *q, int node_id, struct lock_class_key *lkclass) = (__ALLOC_DISK_NODE_ADDR != 0) ?
 	(struct gendisk* (*)(struct request_queue *q, int node_id, struct lock_class_key *lkclass)) (__ALLOC_DISK_NODE_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
 
@@ -4213,6 +4212,12 @@ static int __tracer_setup_snap(struct snap_device *dev, unsigned int minor, stru
 	// alloc_disk function has been disappeared starting from the kernel 5.15
 	dev->sd_gd = alloc_disk(1);
 #else
+	/** 
+	 * Current approach to creating disk is way too obsolete
+	 * and will be replaced by the modern block device API:
+	 *
+	 * https://github.com/elastio/elastio-snap/issues/180
+	 */
 	dev->sd_gd = elastio_snap_alloc_disk_node(dev->sd_queue, NUMA_NO_NODE, &sd_bio_compl_lkclass);
 #endif
 	if(!dev->sd_gd){
