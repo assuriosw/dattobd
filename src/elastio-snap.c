@@ -4170,8 +4170,8 @@ static int __tracer_setup_snap(struct snap_device *dev, unsigned int minor, stru
 	}
 
 	//allocate request queue
-#ifdef HAVE_BLK_ALLOC_QUEUE_MK_REQ_FN_NODE_ID
 	LOG_DEBUG("allocating queue and setting up make request function");
+#ifdef HAVE_BLK_ALLOC_QUEUE_MK_REQ_FN_NODE_ID
 	dev->sd_queue = blk_alloc_queue(snap_mrf, NUMA_NO_NODE);
 #else
 	dev->sd_queue = elastio_blk_alloc_queue(GFP_KERNEL);
