@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - master
-      - 'release'
+      - 'release**'
       - 'debug/**'
   pull_request: ~
 
