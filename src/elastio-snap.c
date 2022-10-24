@@ -1247,7 +1247,7 @@ static inline void tracer_set_cow_fail_state(struct snap_device *dev, int error)
 	smp_mb();
 }
 
-static inline int tracer_fail_state(struct snap_device *dev){
+static inline int tracer_fail_state(const struct snap_device *dev){
 	int err;
 
 	err = tracer_read_fail_state(dev);
