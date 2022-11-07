@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 /*
- * Copyright (C) 2015 Datto Inc.
- * Additional contributions by Elastio Software, Inc are Copyright (C) 2020 Elastio Software Inc.
+ * Copyright (C) 2022 Elastio Software Inc.
  */
 
 // kernel version < 3.14
