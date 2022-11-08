@@ -3372,7 +3372,7 @@ static inline void wait_for_bio_complete(struct snap_device *dev)
 			atomic64_read(&dev->sd_submitted_cnt) == atomic64_read(&dev->sd_processed_cnt),
 			msecs_to_jiffies(WAIT_SUBMITTED_BIOS_MSEC))) {
 		LOG_WARN("failed wait for all submitted BIOs to be processed after %d ms. bio submitted = %lld, bio processed = %lld",
-				WAIT_SUBMITTED_BIOS_MSEC, atomic64_read(&dev->sd_submitted_cnt), atomic64_read(&dev->sd_processed_cnt));
+				WAIT_SUBMITTED_BIOS_MSEC, (u64)atomic64_read(&dev->sd_submitted_cnt), (u64)atomic64_read(&dev->sd_processed_cnt));
 	}
 }
 
