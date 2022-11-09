@@ -3199,14 +3199,10 @@ static int snap_cow_thread(void *data){
 				continue;
 			}
 
-			// handle write bio in all cases except just when an error have to be ignored and the snapshot is in the error state
-			if (!dev->sd_ignore_snap_errors || tracer_read_fail_state(dev) == 0)
-			{
-				ret = snap_handle_write_bio(dev, bio);
-				if (ret) {
-					LOG_ERROR(ret, "error handling write bio in kernel thread");
-					tracer_set_fail_state(dev, ret);
-				}
+			ret = snap_handle_write_bio(dev, bio);
+			if (ret) {
+				LOG_ERROR(ret, "error handling write bio in kernel thread");
+				tracer_set_fail_state(dev, ret);
 			}
 
 			atomic64_inc(&dev->sd_processed_cnt);
