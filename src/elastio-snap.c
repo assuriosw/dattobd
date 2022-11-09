@@ -1086,14 +1086,13 @@ struct cow_manager{
 struct snap_device{
 	unsigned int sd_minor; //minor number of the snapshot
 	unsigned long sd_state; //current state of the snapshot
-	unsigned int sd_allow_mem_mapping; //whether or not to return EIO on read snap bios when an active snap in a failed state
+	bool sd_ignore_snap_errors; //whether or not to return EIO on read snap BIOs when an active snap in a failed state
+								//it's useful to avoid SIGBUS when the snapshot device is used as memory mapped file
 	unsigned long sd_cow_state; //current state of cow file
 	unsigned long sd_falloc_size; //space allocated to the cow file (in megabytes)
 	unsigned long sd_cache_size; //maximum cache size (in bytes)
 	atomic_t sd_refs; //number of users who have this device open
 	atomic_t sd_fail_code; //failure return code
-	atomic_t sd_memory_fail_code; //memory failure return code to signal memory usage has exceeded threshold
-	atomic_t sd_cow_fail_state; //cow file failure return code
 	sector_t sd_sect_off; //starting sector of base block device
 	sector_t sd_size; //size of device in sectors
 	struct request_queue *sd_queue; //snap device request queue
@@ -1264,43 +1263,6 @@ static inline void tracer_set_fail_state(struct snap_device *dev, int error){
 	(void)atomic_cmpxchg(&dev->sd_fail_code, 0, error);
 	smp_mb();
 }
-
-static inline int tracer_read_memory_fail_state(const struct snap_device *dev){
-	smp_mb();
-	return atomic_read(&dev->sd_memory_fail_code);
-}
-
-static inline void tracer_set_memory_fail_state(struct snap_device *dev, int error){
-	smp_mb();
-	(void)atomic_cmpxchg(&dev->sd_memory_fail_code, 0, error);
-	smp_mb();
-}
-
-static inline int tracer_read_cow_fail_state(const struct snap_device *dev){
-	smp_mb();
-	return atomic_read(&dev->sd_cow_fail_state);
-}
-
-static inline void tracer_set_cow_fail_state(struct snap_device *dev, int error){
-	smp_mb();
-	(void)atomic_cmpxchg(&dev->sd_cow_fail_state, 0, error);
-	smp_mb();
-}
-
-static inline int tracer_fail_state(const struct snap_device *dev){
-	int err;
-
-	err = tracer_read_fail_state(dev);
-	if (err == 0) {
-		err = tracer_read_memory_fail_state(dev);
-		if (err == 0) {
-			err = tracer_read_cow_fail_state(dev);
-		}
-	}
-
-	return err;
-}
-
 /************************IOCTL COPY FROM USER FUNCTIONS************************/
 
 static int copy_string_from_user(const char __user *data, char **out_ptr){
@@ -1327,7 +1289,7 @@ error:
 	return ret;
 }
 
-static int get_setup_params(const struct setup_params __user *in, unsigned int *minor, char **bdev_name, char **cow_path, unsigned long *fallocated_space, unsigned long *cache_size, unsigned int *allow_mem_mapping){
+static int get_setup_params(const struct setup_params __user *in, unsigned int *minor, char **bdev_name, char **cow_path, unsigned long *fallocated_space, unsigned long *cache_size, bool *ignore_snap_errors){
 	int ret;
 	struct setup_params params;
 
@@ -1360,7 +1322,7 @@ static int get_setup_params(const struct setup_params __user *in, unsigned int *
 	*minor = params.minor;
 	*fallocated_space = params.fallocated_space;
 	*cache_size = params.cache_size;
-	*allow_mem_mapping = params.allow_mem_mapping;
+	*ignore_snap_errors = params.ignore_snap_errors;
 	return 0;
 
 error:
@@ -1422,7 +1384,7 @@ error:
 	return ret;
 }
 
-static int get_transition_snap_params(const struct transition_snap_params __user *in, unsigned int *minor, char **cow_path, unsigned long *fallocated_space){
+static int get_transition_snap_params(const struct transition_snap_params __user *in, unsigned int *minor, char **cow_path, unsigned long *fallocated_space, bool *ignore_snap_errors){
 	int ret;
 	struct transition_snap_params params;
 
@@ -1445,6 +1407,7 @@ static int get_transition_snap_params(const struct transition_snap_params __user
 
 	*minor = params.minor;
 	*fallocated_space = params.fallocated_space;
+	*ignore_snap_errors = params.ignore_snap_errors;
 	return 0;
 
 error:
@@ -3268,7 +3231,7 @@ static int snap_cow_thread(void *data){
 		if(!bio_data_dir(bio)){
 			//if we're in the fail state just send back an IO error and free the bio
 			if(is_failed){
-				elastio_snap_bio_endio(bio, -EIO); //end the bio with an IO error
+				elastio_snap_bio_endio(bio, !dev->sd_ignore_snap_errors ? -EIO : 0); //end the bio with an IO error
 				continue;
 			}
 
@@ -3278,19 +3241,20 @@ static int snap_cow_thread(void *data){
 				tracer_set_fail_state(dev, ret);
 			}
 
-			elastio_snap_bio_endio(bio, (ret)? -EIO : 0);
+			elastio_snap_bio_endio(bio, (ret && !dev->sd_ignore_snap_errors)? -EIO : 0);
 		}else{
 			if(is_failed){
 				bio_free_clone(bio);
 				continue;
 			}
 
-			if (tracer_read_cow_fail_state(dev) == 0)
+			// handle write bio in all cases except just when an error have to be ignored and the snapshot is in the error state
+			if (!dev->sd_ignore_snap_errors || tracer_read_fail_state(dev) == 0)
 			{
 				ret = snap_handle_write_bio(dev, bio);
 				if (ret) {
 					LOG_ERROR(ret, "error handling write bio in kernel thread");
-					tracer_set_cow_fail_state(dev, ret);
+					tracer_set_fail_state(dev, ret);
 				}
 			}
 
@@ -3457,10 +3421,10 @@ static int memory_is_too_low(struct snap_device *dev) {
 		totalram = si.totalram;
 	}
 
-	ret = ((si_mem_available() * 100) / totalram) < LOW_MEMORY_FAIL_PERCENT ? -ENOMEM : tracer_read_memory_fail_state(dev);
-	if (ret && tracer_read_memory_fail_state(dev) == 0) {
+	ret = ((si_mem_available() * 100) / totalram) < LOW_MEMORY_FAIL_PERCENT ? -ENOMEM : tracer_read_fail_state(dev);
+	if (ret && tracer_read_fail_state(dev) != -ENOMEM) {
 		LOG_WARN("physical memory usage has exceeded %d%% threshold. cow file update is stopped", (100 - LOW_MEMORY_FAIL_PERCENT));
-		tracer_set_memory_fail_state(dev, ret);
+		tracer_set_fail_state(dev, ret);
 	}
 	return ret;
 }
@@ -3473,9 +3437,10 @@ static int snap_trace_bio(struct snap_device *dev, struct bio *bio){
 	unsigned int bytes, pages;
 	int max_sectors;
 
-	//if we don't need to cow or physical memory usage has exceeded threshold or
-	//	COW file state is failed, this bio just call the real mrf normally
-	if (!bio_needs_cow(bio, dev) || memory_is_too_low(dev) || tracer_read_cow_fail_state(dev)) {
+	//if we don't need to cow this bio or if the snapshot is in the failed state,
+	//e.g. physical memory usage has exceeded threshold or COW file state is failed,
+	//just call the real mrf normally
+	if (!bio_needs_cow(bio, dev) || memory_is_too_low(dev) || (dev->sd_ignore_snap_errors && tracer_read_fail_state(dev))) {
 		return elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
 	}
 
@@ -3936,8 +3901,6 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 static void __tracer_init(struct snap_device *dev){
 	LOG_DEBUG("initializing tracer");
 	atomic_set(&dev->sd_fail_code, 0);
-	atomic_set(&dev->sd_memory_fail_code, 0);
-	atomic_set(&dev->sd_cow_fail_state, 0);
 	bio_queue_init(&dev->sd_cow_bios);
 	bio_queue_init(&dev->sd_orig_bios);
 	sset_queue_init(&dev->sd_pending_ssets);
@@ -4546,14 +4509,14 @@ static void tracer_destroy(struct snap_device *dev){
 	__tracer_destroy_base_dev(dev);
 }
 
-static int tracer_setup_active_snap(struct snap_device *dev, unsigned int minor, const char *bdev_path, const char *cow_path, unsigned long fallocated_space, unsigned long cache_size, unsigned int allow_mem_mapping){
+static int tracer_setup_active_snap(struct snap_device *dev, unsigned int minor, const char *bdev_path, const char *cow_path, unsigned long fallocated_space, unsigned long cache_size, bool ignore_snap_errors){
 	int ret;
 
 	set_bit(SNAPSHOT, &dev->sd_state);
 	set_bit(ACTIVE, &dev->sd_state);
 	clear_bit(UNVERIFIED, &dev->sd_state);
 
-	dev->sd_allow_mem_mapping = allow_mem_mapping;
+	dev->sd_ignore_snap_errors = ignore_snap_errors;
 
 	//setup base device
 	ret = __tracer_setup_base_dev(dev, bdev_path);
@@ -4766,7 +4729,7 @@ static void tracer_reconfigure(struct snap_device *dev, unsigned long cache_size
 static void tracer_elastio_snap_info(const struct snap_device *dev, struct elastio_snap_info *info){
 	info->minor = dev->sd_minor;
 	info->state = dev->sd_state;
-	info->error = tracer_fail_state(dev);
+	info->error = tracer_read_fail_state(dev);
 	info->cache_size = (dev->sd_cache_size)? dev->sd_cache_size : elastio_snap_cow_max_memory_default;
 	strlcpy(info->cow, dev->sd_cow_path, PATH_MAX);
 	strlcpy(info->bdev, dev->sd_bdev_path, PATH_MAX);
@@ -4842,7 +4805,7 @@ static int __verify_bdev_writable(const char *bdev_path, int *out){
 	return 0;
 }
 
-static int __ioctl_setup(unsigned int minor, const char *bdev_path, const char *cow_path, unsigned long fallocated_space, unsigned long cache_size, unsigned int allow_mem_mapping, int is_snap, int is_reload){
+static int __ioctl_setup(unsigned int minor, const char *bdev_path, const char *cow_path, unsigned long fallocated_space, unsigned long cache_size, bool ignore_snap_errors, int is_snap, int is_reload){
 	int ret, is_mounted;
 	struct snap_device *dev = NULL;
 
@@ -4874,7 +4837,7 @@ static int __ioctl_setup(unsigned int minor, const char *bdev_path, const char *
 
 	//route to the appropriate setup function
 	if(is_snap){
-		if(is_mounted) ret = tracer_setup_active_snap(dev, minor, bdev_path, cow_path, fallocated_space, cache_size, allow_mem_mapping);
+		if(is_mounted) ret = tracer_setup_active_snap(dev, minor, bdev_path, cow_path, fallocated_space, cache_size, ignore_snap_errors);
 		else ret = tracer_setup_unverified_snap(dev, minor, bdev_path, cow_path, cache_size);
 	}else{
 		if(!is_mounted) ret = tracer_setup_unverified_inc(dev, minor, bdev_path, cow_path, cache_size);
@@ -4894,8 +4857,8 @@ error:
 	if(dev) kfree(dev);
 	return ret;
 }
-#define ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size, allow_mem_mapping) __ioctl_setup(minor, bdev_path, cow_path, fallocated_space, cache_size, allow_mem_mapping, 1, 0)
-// TODO: think do I need to add allow_mem_mapping real value from userspace to the funcs below instead of 0
+#define ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size, ignore_snap_errors) __ioctl_setup(minor, bdev_path, cow_path, fallocated_space, cache_size, ignore_snap_errors, 1, 0)
+// TODO: think do I need to add ignore_snap_errors real value from userspace to the funcs below instead of 0
 #define ioctl_reload_snap(minor, bdev_path, cow_path, cache_size) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, 0, 1, 1)
 #define ioctl_reload_inc(minor, bdev_path, cow_path, cache_size) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, 0, 0, 1)
 
@@ -4935,7 +4898,7 @@ static int ioctl_transition_inc(unsigned int minor){
 	wait_for_bio_complete(dev);
 
 	//check that the device is not in the fail state
-	ret = tracer_fail_state(dev);
+	ret = tracer_read_fail_state(dev);
 	if (ret) {
 		LOG_ERROR(ret, "device specified is in the fail state");
 		goto error;
@@ -4958,7 +4921,7 @@ error:
 	return ret;
 }
 
-static int ioctl_transition_snap(unsigned int minor, const char *cow_path, unsigned long fallocated_space){
+static int ioctl_transition_snap(unsigned int minor, const char *cow_path, unsigned long fallocated_space, bool ignore_snap_errors){
 	int ret;
 	struct snap_device *dev;
 
@@ -5062,8 +5025,9 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 	char *bdev_path = NULL;
 	char *cow_path = NULL;
 	struct elastio_snap_info *info = NULL;
-	unsigned int minor = 0, allow_mem_mapping = 0;
+	unsigned int minor = 0;
 	unsigned long fallocated_space = 0, cache_size = 0;
+	bool ignore_snap_errors = false;
 
 	LOG_DEBUG("ioctl command received: %d", cmd);
 	mutex_lock(&ioctl_mutex);
@@ -5071,10 +5035,10 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 	switch(cmd){
 	case IOCTL_SETUP_SNAP:
 		//get params from user space
-		ret = get_setup_params((struct setup_params __user *)arg, &minor, &bdev_path, &cow_path, &fallocated_space, &cache_size, &allow_mem_mapping);
+		ret = get_setup_params((struct setup_params __user *)arg, &minor, &bdev_path, &cow_path, &fallocated_space, &cache_size, &ignore_snap_errors);
 		if(ret) break;
 
-		ret = ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size, allow_mem_mapping);
+		ret = ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size, ignore_snap_errors);
 		if(ret) break;
 
 		elastio_snap_wait_for_release(snap_devices[minor]);
@@ -5124,10 +5088,10 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 		break;
 	case IOCTL_TRANSITION_SNAP:
 		//get params from user space
-		ret = get_transition_snap_params((struct transition_snap_params __user *)arg, &minor, &cow_path, &fallocated_space, &allow_mem_mapping);
+		ret = get_transition_snap_params((struct transition_snap_params __user *)arg, &minor, &cow_path, &fallocated_space, &ignore_snap_errors);
 		if(ret) break;
 
-		ret = ioctl_transition_snap(minor, cow_path, fallocated_space, allow_mem_mapping);
+		ret = ioctl_transition_snap(minor, cow_path, fallocated_space, ignore_snap_errors);
 		if(ret) break;
 
 		break;
@@ -6042,7 +6006,7 @@ static int elastio_snap_proc_show(struct seq_file *m, void *v){
 			}
 		}
 
-		error = tracer_fail_state(dev);
+		error = tracer_read_fail_state(dev);
 		if(error) seq_printf(m, "\t\t\t\"error\": %d,\n", error);
 
 		seq_printf(m, "\t\t\t\"state\": %lu\n", dev->sd_state);

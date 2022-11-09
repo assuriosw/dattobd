@@ -19,13 +19,12 @@
 
 static void print_help(int status){
 	printf("Usage:\n");
-	// TODO: update help message
-	printf("\telioctl setup-snapshot [-c <cache size>] [-f fallocate] <block device> <cow file> <minor>\n");
+	printf("\telioctl setup-snapshot [-c <cache size>] [-f fallocate] [-i (ignore snap errors)] <block device> <cow file> <minor>\n");
 	printf("\telioctl reload-snapshot [-c <cache size>] <block device> <cow file> <minor>\n");
 	printf("\telioctl reload-incremental [-c <cache size>] <block device> <cow file> <minor>\n");
 	printf("\telioctl destroy <minor>\n");
 	printf("\telioctl transition-to-incremental <minor>\n");
-	printf("\telioctl transition-to-snapshot [-f fallocate] <cow file> <minor>\n");
+	printf("\telioctl transition-to-snapshot [-f fallocate] [-i (ignore snap errors)] <cow file> <minor>\n");
 	printf("\telioctl reconfigure [-c <cache size>] <minor>\n");
 	printf("\telioctl info <minor>\n");
 	printf("\telioctl get-free-minor\n");
@@ -33,6 +32,8 @@ static void print_help(int status){
 	printf("<cow file> should be specified as an absolute path.\n");
 	printf("cache size should be provided in bytes, and fallocate should be provided in megabytes.\n");
 	printf("note: if the -c or -f options are not specified for any given call, module defaults are used.\n");
+	printf("-i allows to not propagate IO errors on snapshot read operations when the snapshot is in the failed state.\n");
+	printf("   it should be specified avoid SIGBUS on an error while reading the snapshot device as a memory-mapped file.\n");
 	exit(status);
 }
 
@@ -102,12 +103,11 @@ static int handle_setup_snap(int argc, char **argv){
 	int ret, c;
 	unsigned int minor;
 	unsigned long cache_size = 0, fallocated_space = 0;
-	unsigned int mem_mapping = 0;
+	bool ignore_snap_errors = false;
 	char *bdev, *cow;
 
-	//get cache size and fallocated space params, if given
-	//and mem_mapping, if given
-	while((c = getopt(argc, argv, "c:f:m:")) != -1){
+	//get cache size, fallocated space and ignore errors on snap dev params, if given
+	while((c = getopt(argc, argv, "c:f:i:")) != -1){
 		switch(c){
 		case 'c':
 			ret = parse_ul(optarg, &cache_size);
@@ -117,9 +117,8 @@ static int handle_setup_snap(int argc, char **argv){
 			ret = parse_ul(optarg, &fallocated_space);
 			if(ret) goto error;
 			break;
-		case 'm':
-			ret = parse_ui(optarg, &mem_mapping);
-			if(ret) goto error;
+		case 'i':
+			ignore_snap_errors = true;
 			break;
 		default:
 			errno = EINVAL;
@@ -138,7 +137,7 @@ static int handle_setup_snap(int argc, char **argv){
 	ret = parse_ui(argv[optind + 2], &minor);
 	if(ret) goto error;
 
-	return elastio_snap_setup_snapshot(minor, bdev, cow, fallocated_space, cache_size, mem_mapping);
+	return elastio_snap_setup_snapshot(minor, bdev, cow, fallocated_space, cache_size, ignore_snap_errors);
 
 error:
 	perror("error interpreting setup snapshot parameters");
@@ -152,7 +151,7 @@ static int handle_reload_snap(int argc, char **argv){
 	unsigned long cache_size = 0;
 	char *bdev, *cow;
 
-	//get cache size and fallocated space params, if given
+	//get cache size, if given
 	while((c = getopt(argc, argv, "c:")) != -1){
 		switch(c){
 		case 'c':
@@ -266,19 +265,18 @@ static int handle_transition_snap(int argc, char **argv){
 	int ret, c;
 	unsigned int minor;
 	unsigned long fallocated_space = 0;
-	unsigned int mem_mapping = 0;
+	bool ignore_snap_errors = false;
 	char *cow;
 
-	//get cache size and fallocated space params, if given
-	while((c = getopt(argc, argv, "f:m:")) != -1){
+	//get fallocated space and ignore snap errors params, if given
+	while((c = getopt(argc, argv, "f:i:")) != -1){
 		switch(c){
 		case 'f':
 			ret = parse_ul(optarg, &fallocated_space);
 			if(ret) goto error;
 			break;
-		case 'm':
-			ret = parse_ui(optarg, &mem_mapping);
-			if(ret) goto error;
+		case 'i':
+			ignore_snap_errors = true;
 			break;
 		default:
 			errno = EINVAL;
@@ -296,7 +294,7 @@ static int handle_transition_snap(int argc, char **argv){
 	ret = parse_ui(argv[optind + 1], &minor);
 	if(ret) goto error;
 
-	return elastio_snap_transition_snapshot(minor, cow, fallocated_space, mem_mapping);
+	return elastio_snap_transition_snapshot(minor, cow, fallocated_space, ignore_snap_errors);
 
 error:
 	perror("error interpreting transition to snapshot parameters");

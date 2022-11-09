@@ -11,7 +11,7 @@
 #include <sys/ioctl.h>
 #include "libelastio-snap.h"
 
-int elastio_snap_setup_snapshot(unsigned int minor, char *bdev, char *cow, unsigned long fallocated_space, unsigned long cache_size, int allow_mem_mapping){
+int elastio_snap_setup_snapshot(unsigned int minor, char *bdev, char *cow, unsigned long fallocated_space, unsigned long cache_size, bool ignore_snap_errors){
 	int fd, ret;
 	struct setup_params sp;
 
@@ -23,7 +23,7 @@ int elastio_snap_setup_snapshot(unsigned int minor, char *bdev, char *cow, unsig
 	sp.cow = cow;
 	sp.fallocated_space = fallocated_space;
 	sp.cache_size = cache_size;
-	sp.allow_mem_mapping = allow_mem_mapping;
+	sp.ignore_snap_errors = ignore_snap_errors;
 
 	ret = ioctl(fd, IOCTL_SETUP_SNAP, &sp);
 
@@ -91,14 +91,14 @@ int elastio_snap_transition_incremental(unsigned int minor){
 	return ret;
 }
 
-int elastio_snap_transition_snapshot(unsigned int minor, char *cow, unsigned long fallocated_space, int allow_mem_mapping){
+int elastio_snap_transition_snapshot(unsigned int minor, char *cow, unsigned long fallocated_space, bool ignore_snap_errors){
 	int fd, ret;
 	struct transition_snap_params tp;
 
 	tp.minor = minor;
 	tp.cow = cow;
 	tp.fallocated_space = fallocated_space;
-	tp.allow_mem_mapping = allow_mem_mapping;
+	tp.ignore_snap_errors = ignore_snap_errors;
 
 	fd = open("/dev/elastio-snap-ctl", O_RDONLY);
 	if(fd < 0) return -1;
