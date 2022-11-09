@@ -10,6 +10,7 @@
 
 #ifndef __KERNEL__
 #include <stdint.h>
+#include <stdbool.h>
 #endif
 
 #include <linux/ioctl.h>
@@ -24,7 +25,8 @@ struct setup_params{
 	unsigned long fallocated_space; //space allocated to the cow file (in megabytes)
 	unsigned long cache_size; //maximum cache size (in bytes)
 	unsigned int minor; //requested minor number of the device
-	unsigned int allow_mem_mapping; //whether or not to return EIO on read snap bios when a snap in a failed state. should be not 0 if a snap device is used as memory-mapped file
+	bool ignore_snap_errors; //whether or not to return EIO on read snap BIOs when a snap in a failed state
+							 //it should be not 0 if a snap device is used as a memory-mapped file
 };
 
 struct reload_params{
@@ -38,7 +40,8 @@ struct transition_snap_params{
 	char *cow; //name of cow file for snapshot
 	unsigned long fallocated_space; //space allocated to the cow file (in bytes)
 	unsigned int minor; //requested minor
-	unsigned int allow_mem_mapping; //whether or not to return EIO on read snap bios when a snap in a failed state. should be not 0 if a snap device is used as memory-mapped file
+	bool ignore_snap_errors; //whether or not to return EIO on read snap BIOs when a snap in a failed state
+							 //it should be not 0 if a snap device is used as a memory-mapped file
 };
 
 struct reconfigure_params{
