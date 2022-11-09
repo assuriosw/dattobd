@@ -3368,9 +3368,10 @@ static int memory_is_too_low(struct snap_device *dev) {
 		totalram = si.totalram;
 	}
 
-	ret = ((si_mem_available() * 100) / totalram) < LOW_MEMORY_FAIL_PERCENT ? -ENOMEM : tracer_read_fail_state(dev);
-	if (ret && tracer_read_fail_state(dev) != -ENOMEM) {
+	ret = tracer_read_fail_state(dev);
+	if (ret == 0 && ((si_mem_available() * 100) / totalram) < LOW_MEMORY_FAIL_PERCENT) {
 		LOG_WARN("physical memory usage has exceeded %d%% threshold. cow file update is stopped", (100 - LOW_MEMORY_FAIL_PERCENT));
+		ret = -ENOMEM;
 		tracer_set_fail_state(dev, ret);
 	}
 	return ret;
