@@ -3388,7 +3388,7 @@ static int snap_trace_bio(struct snap_device *dev, struct bio *bio){
 	//if we don't need to cow this bio or if the snapshot is in the failed state,
 	//e.g. physical memory usage has exceeded threshold or COW file state is failed,
 	//just call the real mrf normally
-	if (!bio_needs_cow(bio, dev) || memory_is_too_low(dev) || (dev->sd_ignore_snap_errors && tracer_read_fail_state(dev))) {
+	if (!bio_needs_cow(bio, dev) || memory_is_too_low(dev) || tracer_read_fail_state(dev)) {
 		return elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
 	}
 
