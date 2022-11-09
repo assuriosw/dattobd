@@ -3196,13 +3196,10 @@ static int snap_cow_thread(void *data){
 				continue;
 			}
 
-			if (tracer_read_fail_state(dev) == 0)
-			{
-				ret = snap_handle_write_bio(dev, bio);
-				if (ret) {
-					LOG_ERROR(ret, "error handling write bio in kernel thread");
-					tracer_set_fail_state(dev, ret);
-				}
+			ret = snap_handle_write_bio(dev, bio);
+			if (ret) {
+				LOG_ERROR(ret, "error handling write bio in kernel thread");
+				tracer_set_fail_state(dev, ret);
 			}
 
 			atomic64_inc(&dev->sd_processed_cnt);
