@@ -69,6 +69,12 @@ Allows you to reconfigure various parameters of a snapshot while it is online. C
 
 Allows you to get information about snapshot.
 
+### get-free-minor
+
+`elioctl get-free-minor`
+
+Allows you to get free minor value.
+
 ### EXAMPLES
 
 `# elioctl setup-snapshot /dev/sda1 /var/backup/elastio 4`
@@ -117,6 +123,10 @@ This will output information about snapshot.
         "state": 3
 }
 ```
+
+`elioctl get-free-minor`
+
+This will output first free minor value.
 
 ## Bugs
 

@@ -80,6 +80,12 @@ Allows you to reconfigure various parameters of a snapshot while it is online\. 
 .P
 Allows you to get information about snapshot\.
 .
+.SS "get\-free\-minor"
+\fBelioctl get\-free\-minor\fR
+.
+.P
+Allows you to get free minor value\.
+.
 .SS "EXAMPLES"
 \fB# elioctl setup\-snapshot /dev/sda1 /var/backup/elastio 4\fR
 .
@@ -127,6 +133,12 @@ This will act the same as \fBreload\-snapshot\fR, but for a device that was left
 .
 .P
 This will output information about snapshot\.
+.
+.P
+\fBelioctl get\-free\-minor\fR
+.
+.P
+This will output first free minor value\.
 .
 .SH "Bugs"
 .
