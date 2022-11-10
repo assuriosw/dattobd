@@ -27,6 +27,7 @@ static void print_help(int status){
 	printf("\telioctl transition-to-snapshot [-f fallocate] <cow file> <minor>\n");
 	printf("\telioctl reconfigure [-c <cache size>] <minor>\n");
 	printf("\telioctl info <minor>\n");
+	printf("\telioctl get-free-minor\n");
 	printf("\telioctl help\n\n");
 	printf("<cow file> should be specified as an absolute path.\n");
 	printf("cache size should be provided in bytes, and fallocate should be provided in megabytes.\n");
@@ -372,6 +373,31 @@ error:
 	return 0;
 }
 
+static int handle_get_free_minor(int argc){
+    int minor;
+
+    if(argc != 1){
+	    errno = EINVAL;
+	    goto error;
+    }
+
+    minor = elastio_snap_get_free_minor();
+    if(minor < 0) {
+	errno = ERANGE;
+	goto error;
+    }
+
+    printf("%i\n", minor);
+
+    return 0;
+
+error:
+    perror("error interpreting get_free_minor parameters");
+    print_help(-1);
+    return 0;
+}
+
+
 int main(int argc, char **argv){
 	int ret = 0;
 
@@ -393,6 +419,7 @@ int main(int argc, char **argv){
 	else if(!strcmp(argv[1], "transition-to-snapshot")) ret = handle_transition_snap(argc - 1, argv + 1);
 	else if(!strcmp(argv[1], "reconfigure")) ret = handle_reconfigure(argc - 1, argv + 1);
 	else if(!strcmp(argv[1], "info")) ret = handle_info(argc - 1, argv + 1);
+	else if(!strcmp(argv[1], "get-free-minor")) ret = handle_get_free_minor(argc - 1);
 	else if(!strcmp(argv[1], "help")) print_help(0);
 	else print_help(-1);
 
