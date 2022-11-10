@@ -74,6 +74,12 @@ Cleanly and completely removes the snapshot or incremental, unlinking the associ
 .P
 Allows you to reconfigure various parameters of a snapshot while it is online\. Currently only the index cache size (given in MB) can be changed dynamically\.
 .
+.SS "info"
+\fBelioctl info <minor>\fR
+.
+.P
+Allows you to get information about snapshot\.
+.
 .SS "EXAMPLES"
 \fB# elioctl setup\-snapshot /dev/sda1 /var/backup/elastio 4\fR
 .
@@ -115,6 +121,12 @@ After a reboot, this command may be performed in the early stages of boot, befor
 .
 .P
 This will act the same as \fBreload\-snapshot\fR, but for a device that was left in incremental mode\.
+.
+.P
+\fB# elioctl info 4\fR
+.
+.P
+This will output information about snapshot\.
 .
 .SH "Bugs"
 .

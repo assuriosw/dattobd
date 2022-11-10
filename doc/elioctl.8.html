@@ -140,6 +140,12 @@
 
 <p>Allows you to reconfigure various parameters of a snapshot while it is online. Currently only the index cache size (given in MB) can be changed dynamically.</p>
 
+<h3 id="info">info</h3>
+
+<p><code>elioctl info &lt;minor></code></p>
+
+<p>Allows you to get information about snapshot.</p>
+
 <h3 id="EXAMPLES">EXAMPLES</h3>
 
 <p><code># elioctl setup-snapshot /dev/sda1 /var/backup/elastio 4</code></p>
@@ -169,6 +175,25 @@
 <p><code># elioctl reload-incremental /dev/sda5 /var/backup/elastio1 4</code></p>
 
 <p>This will act the same as <code>reload-snapshot</code>, but for a device that was left in incremental mode.</p>
+
+<p><code># elioctl info 4</code></p>
+
+<p>This will output information about snapshot.
+<code>
+{
+        "minor": 4,
+        "cow_file": "/var/backup/elastio1",
+        "block_device": "/dev/sda1",
+        "max_cache": 10,
+        "fallocate": 10485760,
+        "seq_id": 1,
+        "uuid": "e86eb4fe68e84b7d90a477e02d1311a3",
+        "version": 1,
+        "nr_changed_blocks": 1536,
+        "error": -27,
+        "state": 3
+}
+</code></p>
 
 <h2 id="Bugs">Bugs</h2>
 
