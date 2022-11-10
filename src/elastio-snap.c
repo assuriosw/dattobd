@@ -138,9 +138,6 @@ struct request_queue* (*elastio_blk_alloc_queue)(int node_id) = (BLK_ALLOC_QUEUE
 struct super_block* (*elastio_snap_get_super)(struct block_device *) = (GET_SUPER_ADDR != 0) ?
 	(struct super_block* (*)(struct block_device*)) (GET_SUPER_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
 
-struct gendisk* (*elastio_snap_alloc_disk_node)(struct request_queue *q, int node_id, struct lock_class_key *lkclass) = (__ALLOC_DISK_NODE_ADDR != 0) ?
-	(struct gendisk* (*)(struct request_queue *q, int node_id, struct lock_class_key *lkclass)) (__ALLOC_DISK_NODE_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
-
 #ifndef HAVE_BLKDEV_GET_BY_PATH
 struct block_device *elastio_snap_lookup_bdev(const char *pathname, fmode_t mode) {
 	int r;
