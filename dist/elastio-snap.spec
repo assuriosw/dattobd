@@ -337,6 +337,7 @@ dpkg-gensymbols -P%{buildroot} -p%{libname} -v%{version}-%{release} -e%{buildroo
 # Install utilities and man pages
 mkdir -p %{buildroot}%{_bindir}
 install -p -m 0755 app/elioctl %{buildroot}%{_bindir}/elioctl
+install -p -m 0755 app/elioctl_wrapper.sh %{buildroot}%{_bindir}/elioctl_wrapper.sh
 mkdir -p %{buildroot}%{_sysconfdir}/bash_completion.d
 install -p -m 0755 app/bash_completion.d/elioctl %{buildroot}%{_sysconfdir}/bash_completion.d/
 mkdir -p %{buildroot}%{_mandir}/man8
@@ -491,6 +492,7 @@ rm -rf %{buildroot}
 %defattr(-,root,root,-)
 %endif
 %{_bindir}/elioctl
+%{_bindir}/elioctl_wrapper.sh
 %{_bindir}/update-img
 %{_sysconfdir}/bash_completion.d/elioctl
 %{_mandir}/man8/elioctl.8*
