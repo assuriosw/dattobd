@@ -1263,6 +1263,10 @@ static inline void tracer_set_fail_state(struct snap_device *dev, int error){
 	(void)atomic_cmpxchg(&dev->sd_fail_code, 0, error);
 	smp_mb();
 }
+
+static inline int wrap_err_io(struct snap_device *dev){
+    return !dev->sd_ignore_snap_errors ? -EIO : 0;
+}
 /************************IOCTL COPY FROM USER FUNCTIONS************************/
 
 static int copy_string_from_user(const char __user *data, char **out_ptr){
@@ -3231,7 +3235,7 @@ static int snap_cow_thread(void *data){
 		if(!bio_data_dir(bio)){
 			//if we're in the fail state just send back an IO error and free the bio
 			if(is_failed){
-				elastio_snap_bio_endio(bio, !dev->sd_ignore_snap_errors ? -EIO : 0); //end the bio with an IO error
+				elastio_snap_bio_endio(bio, wrap_err_io(dev)); //end the bio with an IO error
 				continue;
 			}
 
@@ -3241,7 +3245,7 @@ static int snap_cow_thread(void *data){
 				tracer_set_fail_state(dev, ret);
 			}
 
-			elastio_snap_bio_endio(bio, (ret && !dev->sd_ignore_snap_errors)? -EIO : 0);
+			elastio_snap_bio_endio(bio, (ret)? wrap_err_io(dev) : 0);
 		}else{
 			if(is_failed){
 				bio_free_clone(bio);
