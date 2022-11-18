@@ -97,7 +97,7 @@ static int handle_setup_snap(int argc, char **argv){
 	char *bdev, *cow;
 
 	//get cache size, fallocated space and ignore errors on snap dev params, if given
-	while((c = getopt(argc, argv, "c:f:i:")) != -1){
+	while((c = getopt(argc, argv, "c:f:i")) != -1){
 		switch(c){
 		case 'c':
 			ret = parse_ul(optarg, &cache_size);
@@ -117,6 +117,7 @@ static int handle_setup_snap(int argc, char **argv){
 	}
 
 	if(argc - optind != 3){
+
 		errno = EINVAL;
 		goto error;
 	}
