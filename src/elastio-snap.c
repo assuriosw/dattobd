@@ -3609,7 +3609,7 @@ static MRF_RETURN_TYPE snap_mrf(struct bio *bio){
 		elastio_snap_bio_endio(bio, -EOPNOTSUPP);
 		MRF_RETURN(0);
 	}else if(tracer_read_fail_state(dev)){
-		elastio_snap_bio_endio(bio, -EIO);
+		elastio_snap_bio_endio(bio, wrap_err_io(dev));
 		MRF_RETURN(0);
 	}else if(!test_bit(ACTIVE, &dev->sd_state)){
 		elastio_snap_bio_endio(bio, -EBUSY);
