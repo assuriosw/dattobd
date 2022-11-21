@@ -24,7 +24,7 @@ static void print_help(int status){
 	printf("\telioctl reload-incremental [-c <cache size>] <block device> <cow file> <minor>\n");
 	printf("\telioctl destroy <minor>\n");
 	printf("\telioctl transition-to-incremental <minor>\n");
-	printf("\telioctl transition-to-snapshot [-f fallocate] [-i (ignore snap errors)] <cow file> <minor>\n");
+	printf("\telioctl transition-to-snapshot [-f fallocate] <cow file> <minor>\n");
 	printf("\telioctl reconfigure [-c <cache size>] <minor>\n");
 	printf("\telioctl info <minor>\n");
 	printf("\telioctl get-free-minor\n");
@@ -266,18 +266,14 @@ static int handle_transition_snap(int argc, char **argv){
 	int ret, c;
 	unsigned int minor;
 	unsigned long fallocated_space = 0;
-	bool ignore_snap_errors = false;
 	char *cow;
 
 	//get fallocated space and ignore snap errors params, if given
-	while((c = getopt(argc, argv, "f:i:")) != -1){
+	while((c = getopt(argc, argv, "f:")) != -1){
 		switch(c){
 		case 'f':
 			ret = parse_ul(optarg, &fallocated_space);
 			if(ret) goto error;
-			break;
-		case 'i':
-			ignore_snap_errors = true;
 			break;
 		default:
 			errno = EINVAL;
@@ -295,7 +291,7 @@ static int handle_transition_snap(int argc, char **argv){
 	ret = parse_ui(argv[optind + 1], &minor);
 	if(ret) goto error;
 
-	return elastio_snap_transition_snapshot(minor, cow, fallocated_space, ignore_snap_errors);
+	return elastio_snap_transition_snapshot(minor, cow, fallocated_space);
 
 error:
 	perror("error interpreting transition to snapshot parameters");

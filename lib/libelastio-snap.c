@@ -91,14 +91,13 @@ int elastio_snap_transition_incremental(unsigned int minor){
 	return ret;
 }
 
-int elastio_snap_transition_snapshot(unsigned int minor, char *cow, unsigned long fallocated_space, bool ignore_snap_errors){
+int elastio_snap_transition_snapshot(unsigned int minor, char *cow, unsigned long fallocated_space){
 	int fd, ret;
 	struct transition_snap_params tp;
 
 	tp.minor = minor;
 	tp.cow = cow;
 	tp.fallocated_space = fallocated_space;
-	tp.ignore_snap_errors = ignore_snap_errors;
 
 	fd = open("/dev/elastio-snap-ctl", O_RDONLY);
 	if(fd < 0) return -1;

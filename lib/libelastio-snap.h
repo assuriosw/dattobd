@@ -25,7 +25,7 @@ int elastio_snap_destroy(unsigned int minor);
 
 int elastio_snap_transition_incremental(unsigned int minor);
 
-int elastio_snap_transition_snapshot(unsigned int minor, char *cow, unsigned long fallocated_space, bool ignore_snap_errors);
+int elastio_snap_transition_snapshot(unsigned int minor, char *cow, unsigned long fallocated_space);
 
 int elastio_snap_reconfigure(unsigned int minor, unsigned long cache_size);
 
