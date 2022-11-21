@@ -1339,6 +1339,7 @@ error:
 	*minor = 0;
 	*fallocated_space = 0;
 	*cache_size = 0;
+	*ignore_snap_errors = false;
 	return ret;
 }
 
@@ -1386,6 +1387,7 @@ error:
 	*cow_path = NULL;
 	*minor = 0;
 	*cache_size = 0;
+	*ignore_snap_errors = false;
 	return ret;
 }
 
