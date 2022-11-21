@@ -4763,8 +4763,7 @@ static int __ioctl_setup(unsigned int minor, const char *bdev_path, const char *
 	int ret, is_mounted;
 	struct snap_device *dev = NULL;
 
-	// TODO: update message for setup snap and transition to snap with the mem map value
-	LOG_DEBUG("received %s %s ioctl - %u : %s : %s", (is_reload)? "reload" : "setup", (is_snap)? "snap" : "inc", minor, bdev_path, cow_path);
+	LOG_DEBUG("received %s %s ioctl - %u : %s : %s: %s", (is_reload)? "reload" : "setup", (is_snap)? "snap" : "inc", minor, bdev_path, cow_path, (ignore_snap_errors)? "ignore_errors" : "no_ignore_errors");
 
 	//verify that the minor number is valid
 	ret = verify_minor_available(minor);
