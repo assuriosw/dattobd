@@ -4747,6 +4747,7 @@ static void tracer_elastio_snap_info(const struct snap_device *dev, struct elast
 		info->seqid = 0;
 		memset(info->uuid, 0, COW_UUID_SIZE);
 	}
+	info->ignore_snap_errors = dev->sd_ignore_snap_errors;
 }
 
 /************************IOCTL HANDLER FUNCTIONS************************/
