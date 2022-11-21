@@ -1303,7 +1303,7 @@ error:
 	return ret;
 }
 
-static int get_reload_params(const struct reload_params __user *in, unsigned int *minor, char **bdev_name, char **cow_path, unsigned long *cache_size){
+static int get_reload_params(const struct reload_params __user *in, unsigned int *minor, char **bdev_name, char **cow_path, unsigned long *cache_size, bool *ignore_snap_errors){
 	int ret;
 	struct reload_params params;
 
@@ -1335,6 +1335,7 @@ static int get_reload_params(const struct reload_params __user *in, unsigned int
 
 	*minor = params.minor;
 	*cache_size = params.cache_size;
+	*ignore_snap_errors = params.ignore_snap_errors;
 	return 0;
 
 error:
@@ -4810,9 +4811,8 @@ error:
 	return ret;
 }
 #define ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size, ignore_snap_errors) __ioctl_setup(minor, bdev_path, cow_path, fallocated_space, cache_size, ignore_snap_errors, 1, 0)
-// TODO: think do I need to add ignore_snap_errors real value from userspace to the funcs below instead of 0
-#define ioctl_reload_snap(minor, bdev_path, cow_path, cache_size) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, 0, 1, 1)
-#define ioctl_reload_inc(minor, bdev_path, cow_path, cache_size) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, 0, 0, 1)
+#define ioctl_reload_snap(minor, bdev_path, cow_path, cache_size, ignore_snap_errors) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, ignore_snap_errors, 1, 1)
+#define ioctl_reload_inc(minor, bdev_path, cow_path, cache_size, ignore_snap_errors) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, ignore_snap_errors, 0, 1)
 
 static int ioctl_destroy(unsigned int minor){
 	int ret;
@@ -4998,19 +4998,19 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 		break;
 	case IOCTL_RELOAD_SNAP:
 		//get params from user space
-		ret = get_reload_params((struct reload_params __user *)arg, &minor, &bdev_path, &cow_path, &cache_size);
+		ret = get_reload_params((struct reload_params __user *)arg, &minor, &bdev_path, &cow_path, &cache_size, &ignore_snap_errors);
 		if(ret) break;
 
-		ret = ioctl_reload_snap(minor, bdev_path, cow_path, cache_size);
+		ret = ioctl_reload_snap(minor, bdev_path, cow_path, cache_size, ignore_snap_errors);
 		if(ret) break;
 
 		break;
 	case IOCTL_RELOAD_INC:
 		//get params from user space
-		ret = get_reload_params((struct reload_params __user *)arg, &minor, &bdev_path, &cow_path, &cache_size);
+		ret = get_reload_params((struct reload_params __user *)arg, &minor, &bdev_path, &cow_path, &cache_size, &ignore_snap_errors);
 		if(ret) break;
 
-		ret = ioctl_reload_inc(minor, bdev_path, cow_path, cache_size);
+		ret = ioctl_reload_inc(minor, bdev_path, cow_path, cache_size, ignore_snap_errors);
 		if(ret) break;
 
 		break;

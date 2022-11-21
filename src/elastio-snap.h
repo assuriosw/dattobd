@@ -34,6 +34,9 @@ struct reload_params{
 	char *cow; //name of cow file for snapshot
 	unsigned long cache_size; //maximum cache size (in bytes)
 	unsigned int minor; //requested minor number of the device
+	bool ignore_snap_errors; //whether or not to return EIO on read snap BIOs when a snap in a failed state
+							 //it should be not 0 if a snap device is used as a memory-mapped file
+
 };
 
 struct transition_snap_params{

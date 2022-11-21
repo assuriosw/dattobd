@@ -17,9 +17,9 @@ extern "C" {
 
 int elastio_snap_setup_snapshot(unsigned int minor, char *bdev, char *cow, unsigned long fallocated_space, unsigned long cache_size, bool ignore_snap_errors);
 
-int elastio_snap_reload_snapshot(unsigned int minor, char *bdev, char *cow, unsigned long cache_size);
+int elastio_snap_reload_snapshot(unsigned int minor, char *bdev, char *cow, unsigned long cache_size, bool ignore_snap_errors);
 
-int elastio_snap_reload_incremental(unsigned int minor, char *bdev, char *cow, unsigned long cache_size);
+int elastio_snap_reload_incremental(unsigned int minor, char *bdev, char *cow, unsigned long cache_size, bool ignore_snap_errors);
 
 int elastio_snap_destroy(unsigned int minor);
 
