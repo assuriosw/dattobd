@@ -27,11 +27,12 @@ struct elastio_snap_info {
     char bdev[PATH_MAX];
     unsigned long long version;
     unsigned long long nr_changed_blocks;
+    bool ignore_snap_errors;
 };
 
-int elastio_snap_setup_snapshot(unsigned int minor, char *bdev, char *cow, unsigned long fallocated_space, unsigned long cache_size);
-int elastio_snap_reload_snapshot(unsigned int minor, char *bdev, char *cow, unsigned long cache_size);
-int elastio_snap_reload_incremental(unsigned int minor, char *bdev, char *cow, unsigned long cache_size);
+int elastio_snap_setup_snapshot(unsigned int minor, char *bdev, char *cow, unsigned long fallocated_space, unsigned long cache_size, bool ignore_snap_errors);
+int elastio_snap_reload_snapshot(unsigned int minor, char *bdev, char *cow, unsigned long cache_size, bool ignore_snap_errors);
+int elastio_snap_reload_incremental(unsigned int minor, char *bdev, char *cow, unsigned long cache_size, bool ignore_snap_errors);
 int elastio_snap_destroy(unsigned int minor);
 int elastio_snap_transition_incremental(unsigned int minor);
 int elastio_snap_transition_snapshot(unsigned int minor, char *cow, unsigned long fallocated_space);
@@ -43,13 +44,14 @@ int elastio_snap_get_free_minor(void);
 lib = ffi.dlopen("../lib/libelastio-snap.so")
 
 
-def setup(minor, device, cow_file, fallocated_space=0, cache_size=0):
+def setup(minor, device, cow_file, fallocated_space=0, cache_size=0, ignore_snap_errors=False):
     ret = lib.elastio_snap_setup_snapshot(
         minor,
         device.encode("utf-8"),
         cow_file.encode("utf-8"),
         fallocated_space,
-        cache_size
+        cache_size,
+        ignore_snap_errors
     )
 
     if ret != 0:
@@ -59,12 +61,13 @@ def setup(minor, device, cow_file, fallocated_space=0, cache_size=0):
     return 0
 
 
-def reload_snapshot(minor, device, cow_file, cache_size=0):
+def reload_snapshot(minor, device, cow_file, cache_size=0, ignore_snap_errors=False):
     ret = lib.elastio_snap_reload_snapshot(
         minor,
         device.encode("utf-8"),
         cow_file.encode("utf-8"),
-        cache_size
+        cache_size,
+        ignore_snap_errors
     )
 
     if ret != 0:
@@ -74,12 +77,13 @@ def reload_snapshot(minor, device, cow_file, cache_size=0):
     return 0
 
 
-def reload_incremental(minor, device, cow_file, cache_size=0):
+def reload_incremental(minor, device, cow_file, cache_size=0, ignore_snap_errors=False):
     ret = lib.elastio_snap_reload_incremental(
         minor,
         device.encode("utf-8"),
         cow_file.encode("utf-8"),
-        cache_size
+        cache_size,
+        ignore_snap_errors
     )
 
     if ret != 0:
@@ -150,6 +154,7 @@ def info(minor):
         "bdev": ffi.string(di.bdev).decode("utf-8"),
         "version": di.version,
         "nr_changed_blocks": di.nr_changed_blocks,
+        "ignore_snap_errors": di.ignore_snap_errors
     }
 
 def get_free_minor():
