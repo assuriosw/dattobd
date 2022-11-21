@@ -1349,7 +1349,7 @@ error:
 	return ret;
 }
 
-static int get_transition_snap_params(const struct transition_snap_params __user *in, unsigned int *minor, char **cow_path, unsigned long *fallocated_space, bool *ignore_snap_errors){
+static int get_transition_snap_params(const struct transition_snap_params __user *in, unsigned int *minor, char **cow_path, unsigned long *fallocated_space){
 	int ret;
 	struct transition_snap_params params;
 
@@ -1372,7 +1372,6 @@ static int get_transition_snap_params(const struct transition_snap_params __user
 
 	*minor = params.minor;
 	*fallocated_space = params.fallocated_space;
-	*ignore_snap_errors = params.ignore_snap_errors;
 	return 0;
 
 error:
@@ -3956,6 +3955,7 @@ static void __tracer_copy_base_dev(const struct snap_device *src, struct snap_de
 	dest->sd_sect_off = src->sd_sect_off;
 	dest->sd_base_dev = src->sd_base_dev;
 	dest->sd_bdev_path = src->sd_bdev_path;
+	dest->sd_ignore_snap_errors = src->sd_ignore_snap_errors;
 }
 
 static int __tracer_destroy_cow(struct snap_device *dev, int close_method){
@@ -4873,7 +4873,7 @@ error:
 	return ret;
 }
 
-static int ioctl_transition_snap(unsigned int minor, const char *cow_path, unsigned long fallocated_space, bool ignore_snap_errors){
+static int ioctl_transition_snap(unsigned int minor, const char *cow_path, unsigned long fallocated_space){
 	int ret;
 	struct snap_device *dev;
 
@@ -5040,10 +5040,10 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 		break;
 	case IOCTL_TRANSITION_SNAP:
 		//get params from user space
-		ret = get_transition_snap_params((struct transition_snap_params __user *)arg, &minor, &cow_path, &fallocated_space, &ignore_snap_errors);
+		ret = get_transition_snap_params((struct transition_snap_params __user *)arg, &minor, &cow_path, &fallocated_space);
 		if(ret) break;
 
-		ret = ioctl_transition_snap(minor, cow_path, fallocated_space, ignore_snap_errors);
+		ret = ioctl_transition_snap(minor, cow_path, fallocated_space);
 		if(ret) break;
 
 		break;
