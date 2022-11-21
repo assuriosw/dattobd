@@ -1,13 +1,13 @@
-FROM ubuntu:focal
+FROM debian:11
 
 ARG USER_ID
 ARG GROUP_ID
 
 RUN apt-get update && \
 	apt-get install -y wget \
-		build-essential \
-		rsync \
-		pax
+	build-essential \
+	rsync \
+	pax
 
 RUN wget https://github.com/debbuild/debbuild/archive/20.04.0.tar.gz && \
 	tar -zxvf 20.04.0.tar.gz && \

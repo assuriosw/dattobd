@@ -19,13 +19,20 @@ pipeline
 		{
 			parallel
 			{
-				stage('DEB')
+				stage('Ubuntu')
 				{
 					steps
 					{
-						sh "bash ./build.sh ${env.BUILD_NUMBER} deb"
+						sh "bash ./build.sh ${env.BUILD_NUMBER} ubuntu"
 						deployDeb dir: "build-results_deb", map_repo: pkg_map_branches('focal-agent'), user: "rbrepo", agent: "rep-agent"
 						deployDeb dir: "build-results_deb", map_repo: pkg_map_branches('jammy-agent'), user: "rbrepo", agent: "rep-agent"
+					}
+				}
+				stage('Debian')
+				{
+					steps
+					{
+						sh "bash ./build.sh ${env.BUILD_NUMBER} debian"
 						deployDeb dir: "build-results_deb", map_repo: pkg_map_branches('bullseye-agent'), user: "rbrepo", agent: "rep-agent"
 					}
 				}
