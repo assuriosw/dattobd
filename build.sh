@@ -1,6 +1,6 @@
 #!/bin/bash
 
-TARGET_OS=${2:-ubuntu}
+TARGET_OS=${2:-deb}
 
 #create or rebuild bdsnap_builder image
 docker build -t "bdsnap_builder_${TARGET_OS}" --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g) -f "Dockerfile_${TARGET_OS}" .
