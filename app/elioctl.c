@@ -374,27 +374,26 @@ error:
 }
 
 static int handle_get_free_minor(int argc){
-    int minor;
+	int minor;
 
-    if(argc != 1){
-	    errno = EINVAL;
-	    goto error;
-    }
+	if(argc != 1){
+		errno = EINVAL;
+		goto error;
+	}
 
-    minor = elastio_snap_get_free_minor();
-    if(minor < 0) {
-	errno = ERANGE;
-	goto error;
-    }
+	minor = elastio_snap_get_free_minor();
+	if(minor < 0) {
+		return minor;
+	}
 
-    printf("%i\n", minor);
+	printf("%i\n", minor);
 
-    return 0;
+	return 0;
 
 error:
-    perror("error interpreting get_free_minor parameters");
-    print_help(-1);
-    return 0;
+	perror("error interpreting get_free_minor parameters");
+	print_help(-1);
+	return 0;
 }
 
 
