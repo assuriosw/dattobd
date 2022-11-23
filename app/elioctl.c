@@ -41,7 +41,10 @@ static int parse_ul(const char *str, unsigned long *out){
 
 	//check that string is an integer number and has a length
 	do{
-		if(!isdigit(*c)) goto error;
+		if(!isdigit(*c)){
+			errno = EINVAL;
+			goto error;
+		}
 		c++;
 	}while(*c);
 
@@ -69,7 +72,10 @@ static int parse_ui(const char *str, unsigned int *out){
 
 	//check that string is an integer number and has a length
 	do{
-		if(!isdigit(*c)) goto error;
+		if(!isdigit(*c)){
+			errno = EINVAL;
+			goto error;
+		}
 		c++;
 	}while(*c);
 
