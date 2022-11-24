@@ -4556,13 +4556,14 @@ error:
 	return ret;
 }
 
-static int __tracer_setup_unverified(struct snap_device *dev, unsigned int minor, const char *bdev_path, const char *cow_path, unsigned long cache_size, int is_snap){
+static int __tracer_setup_unverified(struct snap_device *dev, unsigned int minor, const char *bdev_path, const char *cow_path, unsigned long cache_size, bool ignore_snap_errors, int is_snap){
 	if(is_snap) set_bit(SNAPSHOT, &dev->sd_state);
 	else clear_bit(SNAPSHOT, &dev->sd_state);
 	clear_bit(ACTIVE, &dev->sd_state);
 	set_bit(UNVERIFIED, &dev->sd_state);
 
 	dev->sd_cache_size = cache_size;
+	dev->sd_ignore_snap_errors = ignore_snap_errors;
 
 	dev->sd_bdev_path = kstrdup(bdev_path, GFP_KERNEL);
 	if(!dev->sd_bdev_path) goto error;
@@ -4580,8 +4581,8 @@ error:
 	tracer_destroy(dev);
 	return -ENOMEM;
 }
-#define tracer_setup_unverified_inc(dev, minor, bdev_path, cow_path, cache_size) __tracer_setup_unverified(dev, minor, bdev_path, cow_path, cache_size, 0)
-#define tracer_setup_unverified_snap(dev, minor, bdev_path, cow_path, cache_size) __tracer_setup_unverified(dev, minor, bdev_path, cow_path, cache_size, 1)
+#define tracer_setup_unverified_inc(dev, minor, bdev_path, cow_path, cache_size, ignore_snap_errors) __tracer_setup_unverified(dev, minor, bdev_path, cow_path, cache_size, ignore_snap_errors, 0)
+#define tracer_setup_unverified_snap(dev, minor, bdev_path, cow_path, cache_size, ignore_snap_errors) __tracer_setup_unverified(dev, minor, bdev_path, cow_path, cache_size, ignore_snap_errors, 1)
 
 /************************IOCTL TRANSITION FUNCTIONS************************/
 
@@ -4842,9 +4843,9 @@ static int __ioctl_setup(unsigned int minor, const char *bdev_path, const char *
 	//route to the appropriate setup function
 	if(is_snap){
 		if(is_mounted) ret = tracer_setup_active_snap(dev, minor, bdev_path, cow_path, fallocated_space, cache_size, ignore_snap_errors);
-		else ret = tracer_setup_unverified_snap(dev, minor, bdev_path, cow_path, cache_size);
+		else ret = tracer_setup_unverified_snap(dev, minor, bdev_path, cow_path, cache_size, ignore_snap_errors);
 	}else{
-		if(!is_mounted) ret = tracer_setup_unverified_inc(dev, minor, bdev_path, cow_path, cache_size);
+		if(!is_mounted) ret = tracer_setup_unverified_inc(dev, minor, bdev_path, cow_path, cache_size, ignore_snap_errors);
 		else{
 			ret = -EINVAL;
 			LOG_ERROR(ret, "illegal to setup as active incremental");
@@ -5244,7 +5245,7 @@ static void __tracer_unverified_snap_to_active(struct snap_device *dev, const ch
 error:
 	LOG_ERROR(ret, "error transitioning snapshot tracer to active state");
 	tracer_destroy(dev);
-	tracer_setup_unverified_snap(dev, minor, bdev_path, rel_path, cache_size);
+	tracer_setup_unverified_snap(dev, minor, bdev_path, rel_path, cache_size, dev->sd_ignore_snap_errors);
 	tracer_set_fail_state(dev, ret);
 	kfree(bdev_path);
 	kfree(rel_path);
@@ -5302,7 +5303,7 @@ static void __tracer_unverified_inc_to_active(struct snap_device *dev, const cha
 error:
 	LOG_ERROR(ret, "error transitioning incremental to active state");
 	tracer_destroy(dev);
-	tracer_setup_unverified_inc(dev, minor, bdev_path, rel_path, cache_size);
+	tracer_setup_unverified_inc(dev, minor, bdev_path, rel_path, cache_size, dev->sd_ignore_snap_errors);
 	tracer_set_fail_state(dev, ret);
 	kfree(bdev_path);
 	kfree(rel_path);
