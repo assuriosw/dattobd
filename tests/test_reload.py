@@ -64,7 +64,7 @@ class TestReload(DeviceTestCase):
         self.assertIsNotNone(snapdev)
 
         self.assertEqual(snapdev["error"], 0)
-        self.assertEqual(snapdev["state"], 5) #NOTE: UNVERIFIED | SNAPSHOT
+        self.assertEqual(snapdev["state"], elastio_snap.State.UNVERIFIED | elastio_snap.State.SNAPSHOT)
         self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
         self.assertEqual(snapdev["bdev"], self.device)
         self.assertEqual(snapdev["version"], 0)
@@ -79,7 +79,7 @@ class TestReload(DeviceTestCase):
         self.assertIsNotNone(snapdev)
 
         self.assertEqual(snapdev["error"], -errno.ENOENT)
-        self.assertEqual(snapdev["state"], 5) #NOTE: UNVERIFIED | SNAPSHOT
+        self.assertEqual(snapdev["state"], elastio_snap.State.UNVERIFIED | elastio_snap.State.SNAPSHOT)
         self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
         self.assertEqual(snapdev["bdev"], self.device)
         self.assertEqual(snapdev["version"], 0)
@@ -99,7 +99,7 @@ class TestReload(DeviceTestCase):
         self.assertIsNotNone(snapdev)
 
         self.assertEqual(snapdev["error"], 0)
-        self.assertEqual(snapdev["state"], 4) #NOTE: UNVERIFIED
+        self.assertEqual(snapdev["state"], elastio_snap.State.UNVERIFIED)
         self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
         self.assertEqual(snapdev["bdev"], self.device)
         self.assertEqual(snapdev["version"], 0)
@@ -114,7 +114,7 @@ class TestReload(DeviceTestCase):
         self.assertIsNotNone(snapdev)
 
         self.assertEqual(snapdev["error"], -errno.ENOENT)
-        self.assertEqual(snapdev["state"], 4) #NOTE: UNVERIFIED
+        self.assertEqual(snapdev["state"], elastio_snap.State.UNVERIFIED)
         self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
         self.assertEqual(snapdev["bdev"], self.device)
         self.assertEqual(snapdev["version"], 0)
@@ -139,7 +139,7 @@ class TestReload(DeviceTestCase):
         self.assertIsNotNone(snapdev)
 
         self.assertEqual(snapdev["error"], 0)
-        self.assertEqual(snapdev["state"], 5) #NOTE: UNVERIFIED | SNAPSHOT
+        self.assertEqual(snapdev["state"], elastio_snap.State.UNVERIFIED | elastio_snap.State.SNAPSHOT)
         self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
         self.assertEqual(snapdev["bdev"], self.device)
         self.assertEqual(snapdev["version"], 0)
@@ -157,7 +157,7 @@ class TestReload(DeviceTestCase):
         self.assertIsNotNone(snapdev)
 
         self.assertEqual(snapdev["error"], 0)
-        self.assertEqual(snapdev["state"], 3) #NOTE: ACTIVE | SNAPSHOT
+        self.assertEqual(snapdev["state"], elastio_snap.State.ACTIVE | elastio_snap.State.SNAPSHOT)
         self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
         self.assertEqual(snapdev["bdev"], self.device)
         self.assertEqual(snapdev["version"], 1)
@@ -183,7 +183,7 @@ class TestReload(DeviceTestCase):
         self.assertIsNotNone(snapdev)
 
         self.assertEqual(snapdev["error"], 0)
-        self.assertEqual(snapdev["state"], 4) #NOTE: UNVERIFIED
+        self.assertEqual(snapdev["state"], elastio_snap.State.UNVERIFIED)
         self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
         self.assertEqual(snapdev["bdev"], self.device)
         self.assertEqual(snapdev["version"], 0)
@@ -201,7 +201,7 @@ class TestReload(DeviceTestCase):
         self.assertIsNotNone(snapdev)
 
         self.assertEqual(snapdev["error"], 0)
-        self.assertEqual(snapdev["state"], 2) #NOTE: ACTIVE
+        self.assertEqual(snapdev["state"], elastio_snap.State.ACTIVE)
         self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
         self.assertEqual(snapdev["bdev"], self.device)
         self.assertEqual(snapdev["version"], 1)

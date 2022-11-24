@@ -6,6 +6,7 @@
 #
 
 from cffi import FFI
+from enum import IntFlag
 
 import util
 
@@ -14,6 +15,11 @@ ffi = FFI()
 ffi.cdef("""
 #define COW_UUID_SIZE 16
 #define PATH_MAX 4096
+
+//macros for defining the state of a tracing struct (bit offsets)
+#define SNAPSHOT 0
+#define ACTIVE 1
+#define UNVERIFIED 2
 
 struct elastio_snap_info {
     unsigned int minor;
@@ -43,6 +49,10 @@ int elastio_snap_get_free_minor(void);
 
 lib = ffi.dlopen("../lib/libelastio-snap.so")
 
+class State(IntFlag):
+    SNAPSHOT = 1
+    ACTIVE = 2
+    UNVERIFIED = 4
 
 def setup(minor, device, cow_file, fallocated_space=0, cache_size=0, ignore_snap_errors=False):
     ret = lib.elastio_snap_setup_snapshot(
