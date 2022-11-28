@@ -3544,6 +3544,12 @@ static int inc_trace_bio(struct snap_device *dev, struct bio *bio){
 	bio_iter_t iter;
 	bio_iter_bvec_t bvec;
 
+	if (!test_bit(COW_ON_BDEV, &dev->sd_cow_state)){
+		// if the cow is non-resident, then we don't need to check if
+		// the bio is for the cow file.
+		ret = inc_make_sset(dev, bio_sector(bio), bio_size(bio) / SECTOR_SIZE);
+		goto out;
+	}
 #if (defined HAVE_ENUM_REQ_OPF) || \
 	(defined HAVE_ENUM_REQ_OP && defined HAVE_WRITE_ZEROES)
 	// HAVE_ENUM_REQ_OPF: KERNEL_VERSION >= 4.10 && KERNEL_VERSION <= 5.19
