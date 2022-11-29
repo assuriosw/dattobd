@@ -4748,6 +4748,8 @@ static void tracer_elastio_snap_info(const struct snap_device *dev, struct elast
 		info->seqid = 0;
 		memset(info->uuid, 0, COW_UUID_SIZE);
 	}
+
+	info->flags = dev->sd_cow_state; //TODO: May be rename to sd_flags
 }
 
 /************************IOCTL HANDLER FUNCTIONS************************/
@@ -6012,6 +6014,7 @@ static int elastio_snap_proc_show(struct seq_file *m, void *v){
 
 		seq_printf(m, "\t\t\t\"state\": %lu,\n", dev->sd_state);
 		seq_printf(m, "\t\t\t\"ignore_errors\": %i\n", dev->sd_ignore_snap_errors);
+		seq_printf(m, "\t\t\t\"cow on bdev\": %d\n", test_bit(COW_ON_BDEV, &dev->sd_cow_state));
 		seq_printf(m, "\t\t}");
 	}
 
