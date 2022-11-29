@@ -72,9 +72,31 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         self.assertEqual(snapdev["flags"], elastio_snap.Flags.COW_ON_BDEV)
         self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
 
-
     def test_redirected_modify_origin_snap(self):
-        pass
+        testfile = "{}/testfile".format(self.source_mount)
+        snapfile = "{}/testfile".format(self.snap_mount)
+
+        with open(testfile, "w") as f:
+            f.write("The quick brown fox")
+
+        self.addCleanup(os.remove, testfile)
+        os.sync()
+        md5_orig = util.md5sum(testfile)
+
+        self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
+        self.addCleanup(elastio_snap.destroy, self.minor)
+
+        with open(testfile, "w") as f:
+            f.write("jumps over the lazy dog")
+
+        os.sync()
+        # TODO: norecovery option, probably, should not be here after the fix of the elastio/elastio-snap#63
+        opts = "nouuid,norecovery,ro" if (self.fs == "xfs") else "ro"
+        util.mount(self.snap_device, self.snap_mount, opts)
+        self.addCleanup(util.unmount, self.snap_mount)
+
+        md5_snap = util.md5sum(snapfile)
+        self.assertEqual(md5_orig, md5_snap)
 
     def test_redirected_reload_snapshot(self):
         pass
