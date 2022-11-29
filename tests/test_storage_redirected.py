@@ -27,6 +27,7 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         self.device = self.devices[self.source_part_num]
         self.source_mount = self.mounts[self.source_part_num]
         self.target_mount = self.mounts[self.target_part_num]
+        self.target_device = self.devices[self.target_part_num]
         self.cow_full_path = "{}/{}".format(self.target_mount, self.cow_file)
 
         self.snap_device = "/dev/elastio-snap{}".format(self.minor)
@@ -134,10 +135,29 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         pass
 
     def test_redirected_umount_target_snapshot(self):
-        pass
+        self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
+        self.addCleanup(elastio_snap.destroy, self.minor)
+        self.addCleanup(util.mount, self.target_device, self.target_mount)
+
+        #NOTE: Target is busy until snapshot exists
+        self.assertRaises(subprocess.CalledProcessError, util.unmount, self.target_mount)
+
+        self.assertEqual(elastio_snap.destroy(self.minor), 0)
+        util.unmount(self.target_mount)
 
     def test_redirected_umount_target_incremental(self):
-        pass
+        self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
+        self.addCleanup(elastio_snap.destroy, self.minor)
+
+        self.assertEqual(elastio_snap.transition_to_incremental(self.minor), 0)
+
+        self.addCleanup(util.mount, self.target_device, self.target_mount)
+
+        #NOTE: Target is busy until incremental exists
+        self.assertRaises(subprocess.CalledProcessError, util.unmount, self.target_mount)
+
+        self.assertEqual(elastio_snap.destroy(self.minor), 0)
+        util.unmount(self.target_mount)
 
     def test_umount_source_snapshot(self):
         pass
