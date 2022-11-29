@@ -6039,8 +6039,8 @@ static int elastio_snap_proc_show(struct seq_file *m, void *v){
 		if(error) seq_printf(m, "\t\t\t\"error\": %d,\n", error);
 
 		seq_printf(m, "\t\t\t\"state\": %lu,\n", dev->sd_state);
-		seq_printf(m, "\t\t\t\"ignore_errors\": %i\n", dev->sd_ignore_snap_errors);
-		seq_printf(m, "\t\t\t\"cow on bdev\": %d\n", test_bit(COW_ON_BDEV, &dev->sd_cow_state));
+		seq_printf(m, "\t\t\t\"ignore_errors\": %i,\n", dev->sd_ignore_snap_errors);
+		seq_printf(m, "\t\t\t\"cow on bdev\": %s\n", test_bit(COW_ON_BDEV, &dev->sd_cow_state) ? "true" : "false");
 		seq_printf(m, "\t\t}");
 	}
 
