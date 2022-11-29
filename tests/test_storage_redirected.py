@@ -98,6 +98,35 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         md5_snap = util.md5sum(snapfile)
         self.assertEqual(md5_orig, md5_snap)
 
+    @unittest.skipIf(os.getenv('TEST_FS') == "ext2" and int(platform.release().split(".", 1)[0]) < 4, "Broken on ext2, 3-rd kernels")
+    @unittest.skipIf(os.getenv('TEST_FS') == "xfs", "Broken on XFS, due to ignored os.sync and due to #63.")
+    def test_redirected_modify_origin_incremental(self):
+        testfile = "{}/testfile".format(self.source_mount)
+        snapfile = "{}/testfile".format(self.snap_mount)
+
+        with open(testfile, "w") as f:
+            f.write("The quick brown fox")
+
+        self.addCleanup(os.remove, testfile)
+        os.sync()
+        md5_orig = util.md5sum(testfile)
+
+        self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
+        self.addCleanup(elastio_snap.destroy, self.minor)
+        self.assertEqual(elastio_snap.transition_to_incremental(self.minor), 0)
+
+        info = elastio_snap.info(self.minor)
+        start_nr = info["nr_changed_blocks"]
+
+        with open(testfile, "w") as f:
+            f.write("jumps over the lazy dog")
+
+        os.sync()
+
+        info = elastio_snap.info(self.minor)
+        end_nr = info["nr_changed_blocks"]
+        self.assertGreater(end_nr, start_nr)
+
     def test_redirected_reload_snapshot(self):
         pass
 
