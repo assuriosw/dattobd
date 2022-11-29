@@ -1723,6 +1723,16 @@ static int pathname_concat(const char *pathname1, const char *pathname2, char **
 	return 0;
 }
 
+static inline int is_pathname_exists(const char *pathname){
+	int ret;
+	struct path path = {};
+
+	ret = kern_path(pathname, LOOKUP_FOLLOW, &path);
+	path_put(&path);
+
+	return ret == 0;
+}
+
 static int user_mount_pathname_concat(const char __user *user_mount_path, const char *rel_path, char **path_out){
 	int ret;
 	char *mount_path;
@@ -5220,7 +5230,11 @@ static void __tracer_unverified_snap_to_active(struct snap_device *dev, const ch
 	if(ret) goto error;
 
 	//setup the cow manager
-	ret = __tracer_setup_cow_reload_snap(dev, dev->sd_base_dev, cow_path, dev->sd_size, dev->sd_cache_size);
+	if(is_pathname_exists(cow_path)){
+		ret = __tracer_setup_cow_reload_snap(dev, dev->sd_base_dev, cow_path, dev->sd_size, dev->sd_cache_size);
+	}else{
+		ret = __tracer_setup_cow_reload_snap(dev, dev->sd_base_dev, rel_path, dev->sd_size, dev->sd_cache_size);
+	}
 	if(ret) goto error;
 
 	//setup the cow path
@@ -5282,7 +5296,11 @@ static void __tracer_unverified_inc_to_active(struct snap_device *dev, const cha
 	if(ret) goto error;
 
 	//setup the cow manager
-	ret = __tracer_setup_cow_reload_inc(dev, dev->sd_base_dev, cow_path, dev->sd_size, dev->sd_cache_size);
+	if(is_pathname_exists(cow_path)){
+		ret = __tracer_setup_cow_reload_inc(dev, dev->sd_base_dev, cow_path, dev->sd_size, dev->sd_cache_size);
+	}else{
+		ret = __tracer_setup_cow_reload_inc(dev, dev->sd_base_dev, rel_path, dev->sd_size, dev->sd_cache_size);
+	}
 	if(ret) goto error;
 
 	//setup the cow path
