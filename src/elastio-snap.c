@@ -5317,14 +5317,19 @@ error:
 
 static void __tracer_dormant_to_active(struct snap_device *dev, const char __user *user_mount_path){
 	int ret;
+	char *resident_cow_path;
 	char *cow_path;
 
-	//generate the full pathname
-	ret = user_mount_pathname_concat(user_mount_path, dev->sd_cow_path, &cow_path);
-	if(ret) goto error;
+	if (test_bit(COW_ON_BDEV, &dev->sd_cow_state)){
+		//generate the full pathname
+		ret = user_mount_pathname_concat(user_mount_path, dev->sd_cow_path, &resident_cow_path);
+		if(ret) goto error;
 
-	//setup the cow manager
-	ret = __tracer_setup_cow_reopen(dev, dev->sd_base_dev, cow_path);
+		ret = __tracer_setup_cow_reopen(dev, dev->sd_base_dev, resident_cow_path);
+		kfree(resident_cow_path);
+	}else{
+		ret = __tracer_setup_cow_reopen(dev, dev->sd_base_dev, dev->sd_cow_path);
+	}
 	if(ret) goto error;
 
 	//restart the cow thread
