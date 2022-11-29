@@ -29,7 +29,6 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         self.target_mount = self.mounts[self.target_part_num]
         self.target_device = self.devices[self.target_part_num]
         self.cow_full_path = "{}/{}".format(self.target_mount, self.cow_file)
-        self.cow_reload_path = "/{}".format(self.cow_file)
 
         self.snap_device = "/dev/elastio-snap{}".format(self.minor)
         self.snap_mount = "/tmp/elio-snap-mnt{0:03d}".format(self.minor)
@@ -44,7 +43,7 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         snapdev = elastio_snap.info(self.minor)
         self.assertIsNotNone(snapdev)
         self.assertEqual(snapdev["flags"], elastio_snap.Flags.COW_REDIRECTED)
-        self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
+        self.assertEqual(snapdev["cow"], self.cow_full_path)
 
         self.assertEqual(elastio_snap.destroy(self.minor), 0)
         self.assertFalse(os.path.exists(self.snap_device))
@@ -59,14 +58,14 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         snapdev = elastio_snap.info(self.minor)
         self.assertIsNotNone(snapdev)
         self.assertEqual(snapdev["flags"], elastio_snap.Flags.COW_REDIRECTED)
-        self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
+        self.assertEqual(snapdev["cow"], self.cow_full_path)
         self.assertEqual(snapdev["state"], elastio_snap.State.ACTIVE | elastio_snap.State.SNAPSHOT)
 
         self.assertEqual(elastio_snap.transition_to_incremental(self.minor), 0)
         snapdev = elastio_snap.info(self.minor)
         self.assertIsNotNone(snapdev)
         self.assertEqual(snapdev["flags"], elastio_snap.Flags.COW_REDIRECTED)
-        self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
+        self.assertEqual(snapdev["cow"], self.cow_full_path)
         self.assertEqual(snapdev["state"], elastio_snap.State.ACTIVE)
 
         new_cow_on_bdev = "{}/{}".format(self.source_mount, self.cow_file)
@@ -141,7 +140,8 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         self.kmod.load()
         self.assertFalse(os.path.exists(self.snap_device))
 
-        self.assertEqual(elastio_snap.reload_snapshot(self.minor, self.device, self.cow_reload_path), 0)
+        #NOTE: for redirected storage should be used full_path
+        self.assertEqual(elastio_snap.reload_snapshot(self.minor, self.device, self.cow_full_path), 0)
         self.addCleanup(elastio_snap.destroy, self.minor)
         self.assertFalse(os.path.exists(self.snap_device))
 
@@ -150,7 +150,7 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
 
         self.assertEqual(snapdev["error"], 0)
         self.assertEqual(snapdev["state"], elastio_snap.State.UNVERIFIED | elastio_snap.State.SNAPSHOT)
-        self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
+        self.assertEqual(snapdev["cow"], self.cow_full_path)
         self.assertEqual(snapdev["bdev"], self.device)
         self.assertEqual(snapdev["version"], 0)
         self.assertEqual(snapdev["falloc_size"], 0)
@@ -167,7 +167,7 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
 
         self.assertEqual(snapdev["error"], 0)
         self.assertEqual(snapdev["state"], elastio_snap.State.ACTIVE | elastio_snap.State.SNAPSHOT)
-        self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
+        self.assertEqual(snapdev["cow"], self.cow_full_path)
         self.assertEqual(snapdev["bdev"], self.device)
         self.assertEqual(snapdev["version"], 1)
         self.assertNotEqual(snapdev["falloc_size"], 0)
@@ -183,7 +183,8 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         self.kmod.load()
         self.assertFalse(os.path.exists(self.snap_device))
 
-        self.assertEqual(elastio_snap.reload_incremental(self.minor, self.device, self.cow_reload_path), 0)
+        #NOTE: for redirected storage should be used full_path
+        self.assertEqual(elastio_snap.reload_incremental(self.minor, self.device, self.cow_full_path), 0)
         self.addCleanup(elastio_snap.destroy, self.minor)
         self.assertFalse(os.path.exists(self.snap_device))
 
@@ -192,7 +193,7 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
 
         self.assertEqual(snapdev["error"], 0)
         self.assertEqual(snapdev["state"], elastio_snap.State.UNVERIFIED)
-        self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
+        self.assertEqual(snapdev["cow"], self.cow_full_path)
         self.assertEqual(snapdev["bdev"], self.device)
         self.assertEqual(snapdev["version"], 0)
         self.assertEqual(snapdev["falloc_size"], 0)
@@ -209,7 +210,7 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
 
         self.assertEqual(snapdev["error"], 0)
         self.assertEqual(snapdev["state"], elastio_snap.State.ACTIVE)
-        self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
+        self.assertEqual(snapdev["cow"], self.cow_full_path)
         self.assertEqual(snapdev["bdev"], self.device)
         self.assertEqual(snapdev["version"], 1)
         self.assertNotEqual(snapdev["falloc_size"], 0)

@@ -4133,8 +4133,14 @@ static int __tracer_setup_cow_path(struct snap_device *dev, const struct file *c
 	int ret;
 
 	//get the pathname of the cow file (relative to the mountpoint)
-	LOG_DEBUG("getting relative pathname of cow file");
-	ret = dentry_get_relative_pathname(elastio_snap_get_dentry(cow_file), &dev->sd_cow_path, NULL);
+	if(test_bit(COW_ON_BDEV, &dev->sd_cow_state)){
+		LOG_DEBUG("getting relative pathname of cow file");
+		ret = dentry_get_relative_pathname(elastio_snap_get_dentry(cow_file), &dev->sd_cow_path, NULL);
+	}else{
+		LOG_DEBUG("getting absolute pathname of cow file");
+		ret = file_get_absolute_pathname(cow_file, &dev->sd_cow_path, NULL);
+	}
+
 	if(ret) goto error;
 
 	return 0;
