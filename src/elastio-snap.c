@@ -4765,7 +4765,7 @@ static void tracer_elastio_snap_info(const struct snap_device *dev, struct elast
 		memset(info->uuid, 0, COW_UUID_SIZE);
 	}
 
-	info->flags = dev->sd_cow_state; //TODO: May be rename to sd_flags
+	info->flags = (unsigned int)dev->sd_cow_state; //TODO: May be rename to sd_flags
 }
 
 /************************IOCTL HANDLER FUNCTIONS************************/
