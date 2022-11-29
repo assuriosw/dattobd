@@ -148,7 +148,6 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
     def test_redirected_umount_target_incremental(self):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
         self.addCleanup(elastio_snap.destroy, self.minor)
-
         self.assertEqual(elastio_snap.transition_to_incremental(self.minor), 0)
 
         self.addCleanup(util.mount, self.target_device, self.target_mount)
@@ -160,22 +159,47 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         util.unmount(self.target_mount)
 
     def test_umount_source_snapshot(self):
-        pass
-
-    def test_umount_source_incremental(self):
-        pass
-
-    def destroy_dormant(self):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
-        util.unmount(self.source_mount)
+        self.addCleanup(elastio_snap.destroy, self.minor)
 
-        self.addCleanup(os.remove, self.cow_full_path)
+        info = elastio_snap.info(self.minor)
+        self.assertEqual(info["state"], 3)
+
+        util.unmount(self.source_mount)
         self.addCleanup(util.mount, self.device, self.source_mount)
 
+        info = elastio_snap.info(self.minor)
+        self.assertEqual(info["state"], 1)
+
+        os.remove(self.cow_full_path) #NOTE: should not raise an exception
+        self.assertFalse(os.path.exists(self.cow_full_path))
+
         self.assertEqual(elastio_snap.destroy(self.minor), 0)
+
         self.assertFalse(os.path.exists(self.snap_device))
         self.assertIsNone(elastio_snap.info(self.minor))
+
+    def test_umount_source_incremental(self):
+        self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
+        self.addCleanup(elastio_snap.destroy, self.minor)
+        self.assertEqual(elastio_snap.transition_to_incremental(self.minor), 0)
+
+        info = elastio_snap.info(self.minor)
+        self.assertEqual(info["state"], 2)
+
+        util.unmount(self.source_mount)
+        self.addCleanup(util.mount, self.device, self.source_mount)
+
+        info = elastio_snap.info(self.minor)
+        self.assertEqual(info["state"], 0)
+
+        os.remove(self.cow_full_path) #NOTE: should not raise an exception
         self.assertFalse(os.path.exists(self.cow_full_path))
+
+        self.assertEqual(elastio_snap.destroy(self.minor), 0)
+
+        self.assertFalse(os.path.exists(self.snap_device))
+        self.assertIsNone(elastio_snap.info(self.minor))
 
 
 if __name__ == "__main__":
