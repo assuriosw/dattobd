@@ -130,6 +130,75 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         end_nr = info["nr_changed_blocks"]
         self.assertGreater(end_nr, start_nr)
 
+    def test_redirected_remount_active_snapshot(self):
+        self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
+        self.addCleanup(elastio_snap.destroy, self.minor)
+
+        util.unmount(self.source_mount)
+        self.addCleanup(util.mount, self.device, self.source_mount)
+
+        snapdev = elastio_snap.info(self.minor)
+        self.assertIsNotNone(snapdev)
+        self.assertEqual(snapdev["error"], 0)
+        self.assertEqual(snapdev["state"], elastio_snap.State.SNAPSHOT)
+        self.assertEqual(snapdev["cow"], self.cow_full_path)
+        self.assertEqual(snapdev["bdev"], self.device)
+        self.assertEqual(snapdev["version"], 1)
+        self.assertNotEqual(snapdev["falloc_size"], 0)
+        self.assertEqual(snapdev["flags"], elastio_snap.Flags.COW_REDIRECTED)
+
+        # Mount and test that snapshot is active
+        util.mount(self.device, self.source_mount)
+        self.addCleanup(util.unmount, self.device, self.source_mount)
+
+        self.assertTrue(os.path.exists(self.cow_full_path))
+        self.assertTrue(os.path.exists(self.snap_device))
+
+        snapdev = elastio_snap.info(self.minor)
+        self.assertIsNotNone(snapdev)
+        self.assertEqual(snapdev["error"], 0)
+        self.assertEqual(snapdev["state"], elastio_snap.State.ACTIVE | elastio_snap.State.SNAPSHOT)
+        self.assertEqual(snapdev["cow"], self.cow_full_path)
+        self.assertEqual(snapdev["bdev"], self.device)
+        self.assertEqual(snapdev["version"], 1)
+        self.assertNotEqual(snapdev["falloc_size"], 0)
+        self.assertEqual(snapdev["flags"], elastio_snap.Flags.COW_REDIRECTED)
+
+    def test_redirected_remount_active_incremental(self):
+        self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
+        self.addCleanup(elastio_snap.destroy, self.minor)
+        self.assertEqual(elastio_snap.transition_to_incremental(self.minor), 0)
+
+        util.unmount(self.source_mount)
+        self.addCleanup(util.mount, self.device, self.source_mount)
+
+        snapdev = elastio_snap.info(self.minor)
+        self.assertIsNotNone(snapdev)
+        self.assertEqual(snapdev["error"], 0)
+        self.assertEqual(snapdev["state"], 0)
+        self.assertEqual(snapdev["cow"], self.cow_full_path)
+        self.assertEqual(snapdev["bdev"], self.device)
+        self.assertEqual(snapdev["version"], 1)
+        self.assertNotEqual(snapdev["falloc_size"], 0)
+        self.assertEqual(snapdev["flags"], elastio_snap.Flags.COW_REDIRECTED)
+
+        # Mount and test that snapshot is active
+        util.mount(self.device, self.source_mount)
+        self.addCleanup(util.unmount, self.device, self.source_mount)
+
+        self.assertTrue(os.path.exists(self.cow_full_path))
+        self.assertFalse(os.path.exists(self.snap_device))
+
+        snapdev = elastio_snap.info(self.minor)
+        self.assertIsNotNone(snapdev)
+        self.assertEqual(snapdev["error"], 0)
+        self.assertEqual(snapdev["state"], elastio_snap.State.ACTIVE)
+        self.assertEqual(snapdev["cow"], self.cow_full_path)
+        self.assertEqual(snapdev["bdev"], self.device)
+        self.assertEqual(snapdev["version"], 1)
+        self.assertNotEqual(snapdev["falloc_size"], 0)
+        self.assertEqual(snapdev["flags"], elastio_snap.Flags.COW_REDIRECTED)
+
     def test_redirected_reload_snapshot(self):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
 
@@ -154,6 +223,7 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         self.assertEqual(snapdev["bdev"], self.device)
         self.assertEqual(snapdev["version"], 0)
         self.assertEqual(snapdev["falloc_size"], 0)
+        self.assertEqual(snapdev["flags"], elastio_snap.Flags.COW_REDIRECTED)
 
         # Mount and test that snapshot is active
         util.mount(self.device, self.source_mount)
@@ -171,6 +241,7 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         self.assertEqual(snapdev["bdev"], self.device)
         self.assertEqual(snapdev["version"], 1)
         self.assertNotEqual(snapdev["falloc_size"], 0)
+        self.assertEqual(snapdev["flags"], elastio_snap.Flags.COW_REDIRECTED)
 
     def test_redirected_reload_incremental(self):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
