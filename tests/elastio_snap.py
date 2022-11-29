@@ -5,7 +5,7 @@
 # Additional contributions by Elastio Software, Inc are Copyright (C) 2020 Elastio Software Inc.
 #
 
-from enum import IntEnum
+from enum import IntFlag
 from cffi import FFI
 import util
 
@@ -15,6 +15,7 @@ ffi.cdef("""
 #define COW_UUID_SIZE 16
 #define PATH_MAX 4096
 
+//macros for defining the flags
 #define COW_ON_BDEV 1
 
 //macros for defining the state of a tracing struct (bit offsets)
@@ -49,9 +50,17 @@ int elastio_snap_info(unsigned int minor, struct elastio_snap_info *info);
 int elastio_snap_get_free_minor(void);
 """)
 
-class Flags(IntEnum):
+
+class Flags(IntFlag):
     COW_REDIRECTED  = 0,
     COW_ON_BDEV = (1 << 1)
+
+
+class State(IntFlag):
+    SNAPSHOT = 1
+    ACTIVE = 2
+    UNVERIFIED = 4
+
 
 lib = ffi.dlopen("../lib/libelastio-snap.so")
 

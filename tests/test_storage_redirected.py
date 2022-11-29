@@ -59,12 +59,14 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         self.assertIsNotNone(snapdev)
         self.assertEqual(snapdev["flags"], elastio_snap.Flags.COW_REDIRECTED)
         self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
+        self.assertEqual(snapdev["state"], elastio_snap.State.ACTIVE | elastio_snap.State.SNAPSHOT)
 
         self.assertEqual(elastio_snap.transition_to_incremental(self.minor), 0)
         snapdev = elastio_snap.info(self.minor)
         self.assertIsNotNone(snapdev)
         self.assertEqual(snapdev["flags"], elastio_snap.Flags.COW_REDIRECTED)
         self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
+        self.assertEqual(snapdev["state"], elastio_snap.State.ACTIVE)
 
         new_cow_on_bdev = "{}/{}".format(self.source_mount, self.cow_file)
         self.assertEqual(elastio_snap.transition_to_snapshot(self.minor, new_cow_on_bdev), 0)
@@ -163,13 +165,13 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         self.addCleanup(elastio_snap.destroy, self.minor)
 
         info = elastio_snap.info(self.minor)
-        self.assertEqual(info["state"], 3)
+        self.assertEqual(info["state"], elastio_snap.State.ACTIVE | elastio_snap.State.SNAPSHOT)
 
         util.unmount(self.source_mount)
         self.addCleanup(util.mount, self.device, self.source_mount)
 
         info = elastio_snap.info(self.minor)
-        self.assertEqual(info["state"], 1)
+        self.assertEqual(info["state"], elastio_snap.State.SNAPSHOT)
 
         os.remove(self.cow_full_path) #NOTE: should not raise an exception
         self.assertFalse(os.path.exists(self.cow_full_path))
@@ -185,7 +187,7 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         self.assertEqual(elastio_snap.transition_to_incremental(self.minor), 0)
 
         info = elastio_snap.info(self.minor)
-        self.assertEqual(info["state"], 2)
+        self.assertEqual(info["state"], elastio_snap.State.ACTIVE)
 
         util.unmount(self.source_mount)
         self.addCleanup(util.mount, self.device, self.source_mount)
