@@ -2853,8 +2853,11 @@ static int bio_needs_cow(struct bio *bio, struct snap_device *dev){
 		return 1;
 	}
 
-#ifdef HAVE_ENUM_REQ_OPF
-//#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
+// This is a tricky one:
+// HAVE_ENUM_REQ_OPF: KERNEL_VERSION >= 4.10 && KERNEL_VERSION <= 5.19
+// HAVE_ENUM_REQ_OP: KERNEL_VERSION < 4.10 && KERNEL_VERSION >= 6.0
+#if (defined HAVE_ENUM_REQ_OPF) || \
+	(defined HAVE_ENUM_REQ_OP && LINUX_VERSION_CODE >= KERNEL_VERSION(6,0,0))
 	if(bio_op(bio) == REQ_OP_WRITE_ZEROES) return 1;
 #endif
 
@@ -3563,8 +3566,8 @@ static int inc_trace_bio(struct snap_device *dev, struct bio *bio){
 	bio_iter_t iter;
 	bio_iter_bvec_t bvec;
 
-#ifdef HAVE_ENUM_REQ_OPF
-//#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
+#if (defined HAVE_ENUM_REQ_OPF) || \
+	(defined HAVE_ENUM_REQ_OP && LINUX_VERSION_CODE >= KERNEL_VERSION(6,0,0))
 	if(bio_op(bio) == REQ_OP_WRITE_ZEROES){
 		ret = inc_make_sset(dev, bio_sector(bio), bio_size(bio) / SECTOR_SIZE);
 		goto out;
@@ -3793,7 +3796,11 @@ static int find_orig_fops(struct block_device *bdev, struct block_device_operati
 			*ops = dev->sd_orig_ops;
 			*mrf = dev->sd_orig_mrf;
 			*tracing_ops = tracing_ops_get(dev->sd_tracing_ops);
+#ifdef HAVE_BDEVNAME
 			bdevname(dev->sd_base_dev, bdev_name);
+#else
+			snprintf(bdev_name, sizeof(bdev_name), "%pg", dev->sd_base_dev);
+#endif
 			LOG_DEBUG("found already traced device %s with the same original bd_ops. orig mrf = %p; orig ops = %p; tracing ops = %p", bdev_name, *mrf, *ops, *tracing_ops);
 			return 0;
 		}
@@ -3845,7 +3852,11 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 	char bdev_name[BDEVNAME_SIZE];
 	MAYBE_UNUSED(ret);
 
-	bdevname(bdev, bdev_name);
+#ifdef HAVE_BDEVNAME
+			bdevname(bdev, bdev_name);
+#else
+			snprintf(bdev_name, sizeof(bdev_name), "%pg", bdev);
+#endif
 
 	if(origsb){
 		drop_super(origsb);
@@ -4066,7 +4077,11 @@ static int __tracer_setup_cow(struct snap_device *dev, struct block_device *bdev
 	uint64_t max_file_size;
 	char bdev_name[BDEVNAME_SIZE];
 
-	bdevname(bdev, bdev_name);
+#ifdef HAVE_BDEVNAME
+			bdevname(bdev, bdev_name);
+#else
+			snprintf(bdev_name, sizeof(bdev_name), "%pg", bdev);
+#endif
 
 	if(open_method == 3){
 		//reopen the cow manager
@@ -4189,20 +4204,19 @@ static void __tracer_destroy_snap(struct snap_device *dev){
 #endif
 		if(dev->sd_queue){
 			LOG_DEBUG("freeing request queue");
-#ifdef HAVE_BLK_CLEANUP_QUEUE
+#if defined HAVE_ALLOC_DISK
 			blk_cleanup_queue(dev->sd_queue);
-#else
-			blk_put_queue(dev->sd_queue);
 #endif
-			dev->sd_queue = NULL;
 		}
+
 		put_disk(dev->sd_gd);
+		dev->sd_queue = NULL;
 		dev->sd_gd = NULL;
 	}
 
 	if(dev->sd_queue){
 		LOG_DEBUG("freeing request queue");
-#ifdef HAVE_BLK_CLEANUP_QUEUE
+#if defined HAVE_ALLOC_DISK
 		blk_cleanup_queue(dev->sd_queue);
 #else
 		blk_put_queue(dev->sd_queue);
