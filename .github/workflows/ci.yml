@@ -95,8 +95,8 @@ jobs:
             for package in "kernel-core" "kernel-modules" "kernel" "kernel-devel"; do
               sudo yum localinstall -y https://kojipkgs.fedoraproject.org/packages/kernel/${k_ver}/${k_patch}.fc${ver}/${arch}/${package}-${k_ver}-${k_patch}.fc${ver}.${arch}.rpm
             done
-            sudo systemctl stop sshd && sudo reboot now' || true
-          sleep 5
+            '
+          vagrant reload ${{env.INSTANCE_NAME}}
         working-directory: ${{env.BOX_DIR}}
 
       # Please refer to https://github.com/elastio/devboxes/pull/230
