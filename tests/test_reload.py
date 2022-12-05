@@ -51,6 +51,7 @@ class TestReload(DeviceTestCase):
         self.assertFalse(os.path.exists(self.snap_device))
         self.assertIsNone(elastio_snap.info(self.minor))
 
+
     def test_reload_unverified_snapshot(self):
         util.unmount(self.mount)
         self.addCleanup(util.mount, self.device, self.mount)
@@ -59,31 +60,13 @@ class TestReload(DeviceTestCase):
         self.addCleanup(elastio_snap.destroy, self.minor)
         self.assertFalse(os.path.exists(self.snap_device))
 
-        snapdev = elastio_snap.info(self.minor)
-        self.assertIsNotNone(snapdev)
-
-        self.assertEqual(snapdev["error"], 0)
-        self.assertEqual(snapdev["state"], elastio_snap.State.UNVERIFIED | elastio_snap.State.SNAPSHOT)
-        self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
-        self.assertEqual(snapdev["bdev"], self.device)
-        self.assertEqual(snapdev["version"], 0)
-        self.assertEqual(snapdev["falloc_size"], 0)
-        self.assertEqual(snapdev["ignore_snap_errors"], True)
+        self.check_snap_info(0, elastio_snap.State.UNVERIFIED | elastio_snap.State.SNAPSHOT, True)
 
         # Mount and test that the non-existent cow file been handled
         util.mount(self.device, self.mount)
         self.addCleanup(util.unmount, self.device, self.mount)
 
-        snapdev = elastio_snap.info(self.minor)
-        self.assertIsNotNone(snapdev)
-
-        self.assertEqual(snapdev["error"], -errno.ENOENT)
-        self.assertEqual(snapdev["state"], elastio_snap.State.UNVERIFIED | elastio_snap.State.SNAPSHOT)
-        self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
-        self.assertEqual(snapdev["bdev"], self.device)
-        self.assertEqual(snapdev["version"], 0)
-        self.assertEqual(snapdev["falloc_size"], 0)
-        self.assertEqual(snapdev["ignore_snap_errors"], True)
+        self.check_snap_info(-errno.ENOENT, elastio_snap.State.UNVERIFIED | elastio_snap.State.SNAPSHOT, True)
 
 
     def test_reload_unverified_incremental(self):
@@ -94,31 +77,14 @@ class TestReload(DeviceTestCase):
         self.addCleanup(elastio_snap.destroy, self.minor)
         self.assertFalse(os.path.exists(self.snap_device))
 
-        snapdev = elastio_snap.info(self.minor)
-        self.assertIsNotNone(snapdev)
-
-        self.assertEqual(snapdev["error"], 0)
-        self.assertEqual(snapdev["state"], elastio_snap.State.UNVERIFIED)
-        self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
-        self.assertEqual(snapdev["bdev"], self.device)
-        self.assertEqual(snapdev["version"], 0)
-        self.assertEqual(snapdev["falloc_size"], 0)
-        self.assertEqual(snapdev["ignore_snap_errors"], True)
+        self.check_snap_info(0, elastio_snap.State.UNVERIFIED, True)
 
         # Mount and test that the non-existent cow file been handled
         util.mount(self.device, self.mount)
         self.addCleanup(util.unmount, self.device, self.mount)
 
-        snapdev = elastio_snap.info(self.minor)
-        self.assertIsNotNone(snapdev)
+        self.check_snap_info(-errno.ENOENT, elastio_snap.State.UNVERIFIED, True)
 
-        self.assertEqual(snapdev["error"], -errno.ENOENT)
-        self.assertEqual(snapdev["state"], elastio_snap.State.UNVERIFIED)
-        self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
-        self.assertEqual(snapdev["bdev"], self.device)
-        self.assertEqual(snapdev["version"], 0)
-        self.assertEqual(snapdev["falloc_size"], 0)
-        self.assertEqual(snapdev["ignore_snap_errors"], True)
 
     def test_reload_verified_snapshot(self):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path, ignore_snap_errors=True), 0)
@@ -134,16 +100,7 @@ class TestReload(DeviceTestCase):
         self.addCleanup(elastio_snap.destroy, self.minor)
         self.assertFalse(os.path.exists(self.snap_device))
 
-        snapdev = elastio_snap.info(self.minor)
-        self.assertIsNotNone(snapdev)
-
-        self.assertEqual(snapdev["error"], 0)
-        self.assertEqual(snapdev["state"], elastio_snap.State.UNVERIFIED | elastio_snap.State.SNAPSHOT)
-        self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
-        self.assertEqual(snapdev["bdev"], self.device)
-        self.assertEqual(snapdev["version"], 0)
-        self.assertEqual(snapdev["falloc_size"], 0)
-        self.assertEqual(snapdev["ignore_snap_errors"], False)
+        self.check_snap_info(0, elastio_snap.State.UNVERIFIED | elastio_snap.State.SNAPSHOT, False)
 
         # Mount and test that snapshot is active
         util.mount(self.device, self.mount)
@@ -152,16 +109,8 @@ class TestReload(DeviceTestCase):
         self.assertTrue(os.path.exists(self.cow_full_path))
         self.assertTrue(os.path.exists(self.snap_device))
 
-        snapdev = elastio_snap.info(self.minor)
-        self.assertIsNotNone(snapdev)
+        self.check_snap_info(0, elastio_snap.State.ACTIVE | elastio_snap.State.SNAPSHOT, False, 1)
 
-        self.assertEqual(snapdev["error"], 0)
-        self.assertEqual(snapdev["state"], elastio_snap.State.ACTIVE | elastio_snap.State.SNAPSHOT)
-        self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
-        self.assertEqual(snapdev["bdev"], self.device)
-        self.assertEqual(snapdev["version"], 1)
-        self.assertNotEqual(snapdev["falloc_size"], 0)
-        self.assertEqual(snapdev["ignore_snap_errors"], False)
 
     def test_reload_verified_inc(self):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path, ignore_snap_errors=True), 0)
@@ -178,16 +127,7 @@ class TestReload(DeviceTestCase):
         self.addCleanup(elastio_snap.destroy, self.minor)
         self.assertFalse(os.path.exists(self.snap_device))
 
-        snapdev = elastio_snap.info(self.minor)
-        self.assertIsNotNone(snapdev)
-
-        self.assertEqual(snapdev["error"], 0)
-        self.assertEqual(snapdev["state"], elastio_snap.State.UNVERIFIED)
-        self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
-        self.assertEqual(snapdev["bdev"], self.device)
-        self.assertEqual(snapdev["version"], 0)
-        self.assertEqual(snapdev["falloc_size"], 0)
-        self.assertEqual(snapdev["ignore_snap_errors"], False)
+        self.check_snap_info(0, elastio_snap.State.UNVERIFIED, False)
 
         # Mount and test that snapshot is active
         util.mount(self.device, self.mount)
@@ -196,16 +136,23 @@ class TestReload(DeviceTestCase):
         self.assertTrue(os.path.exists(self.cow_full_path))
         self.assertFalse(os.path.exists(self.snap_device))
 
+        self.check_snap_info(0, elastio_snap.State.ACTIVE, False, 1)
+
+
+    def check_snap_info(self, error, state, ignore_snap_errors, version = 0):
         snapdev = elastio_snap.info(self.minor)
         self.assertIsNotNone(snapdev)
 
-        self.assertEqual(snapdev["error"], 0)
-        self.assertEqual(snapdev["state"], elastio_snap.State.ACTIVE)
+        self.assertEqual(snapdev["error"], error)
+        self.assertEqual(snapdev["state"], state)
         self.assertEqual(snapdev["cow"], "/{}".format(self.cow_file))
         self.assertEqual(snapdev["bdev"], self.device)
-        self.assertEqual(snapdev["version"], 1)
-        self.assertNotEqual(snapdev["falloc_size"], 0)
-        self.assertEqual(snapdev["ignore_snap_errors"], False)
+        self.assertEqual(snapdev["version"], version)
+        self.assertEqual(snapdev["ignore_snap_errors"], ignore_snap_errors)
+        if  state & elastio_snap.State.ACTIVE:
+            self.assertGreater(snapdev["falloc_size"], 0)
+        else:
+            self.assertEqual(snapdev["falloc_size"], 0)
 
 
 if __name__ == "__main__":
