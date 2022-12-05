@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
 #
-# Copyright (C) 2019 Datto, Inc.
-# Additional contributions by Elastio Software, Inc are Copyright (C) 2020 Elastio Software Inc.
+# Copyright (C) 2022 Elastio Software Inc.
 #
 
 import errno
@@ -71,7 +70,7 @@ class TestReload(DeviceTestCase):
         self.assertEqual(snapdev["falloc_size"], 0)
         self.assertEqual(snapdev["ignore_snap_errors"], True)
 
-        # Mount and test that handled not exist cow file
+        # Mount and test that the non-existent cow file been handled
         util.mount(self.device, self.mount)
         self.addCleanup(util.unmount, self.device, self.mount)
 
@@ -106,7 +105,7 @@ class TestReload(DeviceTestCase):
         self.assertEqual(snapdev["falloc_size"], 0)
         self.assertEqual(snapdev["ignore_snap_errors"], True)
 
-        # Mount and test that handled not exist cow file
+        # Mount and test that the non-existent cow file been handled
         util.mount(self.device, self.mount)
         self.addCleanup(util.unmount, self.device, self.mount)
 
