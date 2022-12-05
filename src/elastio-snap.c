@@ -3221,6 +3221,12 @@ static int snap_cow_thread(void *data){
 		//wait for a bio to process or a kthread_stop call
 		wait_event_interruptible(bq->event, kthread_should_stop() || !bio_queue_empty(bq));
 
+		/*
+		/ We should pertend that the snapshot device is alive and don't give EIO on read even if it's in the failed state,
+		/ in case, if dev->sd_ignore_snap_errors == true. This behavior is needed for the userspace apps to be not killed
+		/ by SIGBUS if they are using a the snapshot device as a memmap'd file. For this purpose, cow_free_members shouldn't
+		/ be called here. But it should be for the regular snapshot device readers.
+		*/
 		if(!is_failed && tracer_read_fail_state(dev)){
 			LOG_DEBUG("error detected in cow thread, cleaning up cow");
 			is_failed = 1;
@@ -3254,10 +3260,15 @@ static int snap_cow_thread(void *data){
 				continue;
 			}
 
-			ret = snap_handle_write_bio(dev, bio);
-			if (ret) {
-				LOG_ERROR(ret, "error handling write bio in kernel thread");
-				tracer_set_fail_state(dev, ret);
+			// Handle write bio in all cases except just when an error have to be ignored and the snapshot is in the error state.
+			// NOTE: We can't rely on 'is_failed' value already. The actual error state might have already changed while the BIO was dequeued...
+			if (!dev->sd_ignore_snap_errors || tracer_read_fail_state(dev) == 0)
+			{
+				ret = snap_handle_write_bio(dev, bio);
+				if (ret) {
+					LOG_ERROR(ret, "error handling write bio in kernel thread");
+					tracer_set_fail_state(dev, ret);
+				}
 			}
 
 			atomic64_inc(&dev->sd_processed_cnt);
