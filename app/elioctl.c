@@ -128,7 +128,6 @@ static int handle_setup_snap(int argc, char **argv){
 	}
 
 	if(argc - optind != 3){
-
 		errno = EINVAL;
 		goto error;
 	}
