@@ -31,9 +31,10 @@ static void print_help(int status){
 	printf("\telioctl help\n\n");
 	printf("<cow file> should be specified as an absolute path.\n");
 	printf("cache size should be provided in bytes, and fallocate should be provided in megabytes.\n");
-	printf("note: if the -c or -f options are not specified for any given call, module defaults are used.\n");
-	printf("-i allows to not propagate IO errors on snapshot read operations when the snapshot is in the failed state.\n");
-	printf("   it should be specified avoid SIGBUS on an error while reading the snapshot device as a memory-mapped file.\n");
+	printf("note:\n");
+	printf("  * if the -c or -f options are not specified for any given call, module defaults are used.\n");
+	printf("  * -i allows to not propagate IO errors on snapshot read operations when the snapshot is in the failed state.\n");
+	printf("    it should be specified to avoid SIGBUS on an error while reading the snapshot device as a memory-mapped file.\n");
 	exit(status);
 }
 
