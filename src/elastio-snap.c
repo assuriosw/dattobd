@@ -731,6 +731,13 @@ error:
 }
 #endif
 
+/**
+ * The method is used to unlock/lock CoW file before/after IO.
+ * The COW file should be switched to an immutable one while the driver works to prevent it
+ * from moving or copying and thus guaranteeing the correct driver's behavior.
+ * Another problem which may occur just while reading the CoW file is high and uncontrolled
+ * memory consumption. See comments here https://github.com/elastio/elastio-snap/issues/39
+ */
 static inline void file_switch_lock(struct file *filp, bool lock, bool mark_dirty)
 {
 	struct inode *inode;
