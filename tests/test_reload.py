@@ -86,6 +86,7 @@ class TestReload(DeviceTestCase):
         self.check_snap_info(-errno.ENOENT, elastio_snap.State.UNVERIFIED, True)
 
 
+    @unittest.skipIf(os.getenv('TEST_FS') == "ext2" and int(platform.release().split(".", 1)[0]) < 4, "Broken on ext2, 3-rd kernels")
     def test_reload_verified_snapshot(self):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path, ignore_snap_errors=True), 0)
 
