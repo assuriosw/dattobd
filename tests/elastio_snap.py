@@ -6,7 +6,9 @@
 #
 
 from cffi import FFI
-from enum import IntFlag
+import sys
+if sys.version_info >= (3, 6):
+    from enum import IntFlag
 
 import util
 
@@ -49,10 +51,16 @@ int elastio_snap_get_free_minor(void);
 
 lib = ffi.dlopen("../lib/libelastio-snap.so")
 
-class State(IntFlag):
-    SNAPSHOT = 1
-    ACTIVE = 2
-    UNVERIFIED = 4
+if sys.version_info >= (3, 6):
+    class State(IntFlag):
+        SNAPSHOT = 1
+        ACTIVE = 2
+        UNVERIFIED = 4
+else:
+    class State:
+        SNAPSHOT = 1
+        ACTIVE = 2
+        UNVERIFIED = 4
 
 def setup(minor, device, cow_file, fallocated_space=0, cache_size=0, ignore_snap_errors=False):
     ret = lib.elastio_snap_setup_snapshot(
