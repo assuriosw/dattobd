@@ -5,7 +5,6 @@
 # Additional contributions by Elastio Software, Inc are Copyright (C) 2020 Elastio Software Inc.
 #
 
-from enum import IntFlag
 from cffi import FFI
 import util
 
@@ -51,12 +50,12 @@ int elastio_snap_get_free_minor(void);
 """)
 
 
-class Flags(IntFlag):
-    COW_REDIRECTED  = 0,
-    COW_ON_BDEV = (1 << 1)
+class Flags:
+    COW_REDIRECTED = 0
+    COW_ON_BDEV = 2
 
 
-class State(IntFlag):
+class State:
     SNAPSHOT = 1
     ACTIVE = 2
     UNVERIFIED = 4
