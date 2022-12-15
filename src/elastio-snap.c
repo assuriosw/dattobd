@@ -4748,6 +4748,7 @@ static void tracer_elastio_snap_info(const struct snap_device *dev, struct elast
 	info->state = dev->sd_state;
 	info->error = tracer_read_fail_state(dev);
 	info->cache_size = (dev->sd_cache_size)? dev->sd_cache_size : elastio_snap_cow_max_memory_default;
+	info->ignore_snap_errors = dev->sd_ignore_snap_errors;
 	strlcpy(info->cow, dev->sd_cow_path, PATH_MAX);
 	strlcpy(info->bdev, dev->sd_bdev_path, PATH_MAX);
 
@@ -4762,7 +4763,6 @@ static void tracer_elastio_snap_info(const struct snap_device *dev, struct elast
 		info->seqid = 0;
 		memset(info->uuid, 0, COW_UUID_SIZE);
 	}
-	info->ignore_snap_errors = dev->sd_ignore_snap_errors;
 }
 
 /************************IOCTL HANDLER FUNCTIONS************************/
@@ -4827,7 +4827,7 @@ static int __ioctl_setup(unsigned int minor, const char *bdev_path, const char *
 	int ret, is_mounted;
 	struct snap_device *dev = NULL;
 
-	LOG_DEBUG("received %s %s ioctl - %u : %s : %s: %s", (is_reload)? "reload" : "setup", (is_snap)? "snap" : "inc", minor, bdev_path, cow_path, (ignore_snap_errors)? "ignore_errors" : "no_ignore_errors");
+	LOG_DEBUG("received %s %s ioctl - %u : %s : %s : %s", (is_reload)? "reload" : "setup", (is_snap)? "snap" : "inc", minor, bdev_path, cow_path, (ignore_snap_errors)? "ignore_errors" : "no_ignore_errors");
 
 	//verify that the minor number is valid
 	ret = verify_minor_available(minor);
@@ -6025,8 +6025,8 @@ static int elastio_snap_proc_show(struct seq_file *m, void *v){
 		error = tracer_read_fail_state(dev);
 		if(error) seq_printf(m, "\t\t\t\"error\": %d,\n", error);
 
-		seq_printf(m, "\t\t\t\"state\": %lu\n", dev->sd_state);
-		seq_printf(m, "\t\t\t\"ignore_error\": %i\n", dev->sd_ignore_snap_errors);
+		seq_printf(m, "\t\t\t\"state\": %lu,\n", dev->sd_state);
+		seq_printf(m, "\t\t\t\"ignore_errors\": %i\n", dev->sd_ignore_snap_errors);
 		seq_printf(m, "\t\t}");
 	}
 

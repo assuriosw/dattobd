@@ -6,10 +6,6 @@
 #
 
 from cffi import FFI
-import sys
-if sys.version_info >= (3, 6):
-    from enum import IntFlag
-
 import util
 
 ffi = FFI()
@@ -51,16 +47,12 @@ int elastio_snap_get_free_minor(void);
 
 lib = ffi.dlopen("../lib/libelastio-snap.so")
 
-if sys.version_info >= (3, 6):
-    class State(IntFlag):
-        SNAPSHOT = 1
-        ACTIVE = 2
-        UNVERIFIED = 4
-else:
-    class State:
-        SNAPSHOT = 1
-        ACTIVE = 2
-        UNVERIFIED = 4
+# It could be "class State(IntFlag):", but "IntFlag" was introduced in class "enum" of the Python 3.6,
+# which isn't present on Debian 9 and CentOS 7.
+class State:
+    SNAPSHOT = 1
+    ACTIVE = 2
+    UNVERIFIED = 4
 
 def setup(minor, device, cow_file, fallocated_space=0, cache_size=0, ignore_snap_errors=False):
     ret = lib.elastio_snap_setup_snapshot(

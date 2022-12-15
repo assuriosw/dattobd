@@ -276,8 +276,8 @@ static int handle_transition_snap(int argc, char **argv){
 	unsigned long fallocated_space = 0;
 	char *cow;
 
-	//get fallocated space and ignore snap errors params, if given
-	while((c = getopt(argc, argv, "f")) != -1){
+	//get fallocated space param, if given
+	while((c = getopt(argc, argv, "f:")) != -1){
 		switch(c){
 		case 'f':
 			ret = parse_ul(optarg, &fallocated_space);
