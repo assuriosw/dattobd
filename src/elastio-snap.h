@@ -26,7 +26,7 @@ struct setup_params{
 	unsigned long cache_size; //maximum cache size (in bytes)
 	unsigned int minor; //requested minor number of the device
 	bool ignore_snap_errors; //whether or not to return EIO on read snap BIOs when a snap in a failed state
-							 //it should be not 0 if a snap device is used as a memory-mapped file
+	                         //it should be not 0 if a snap device is used as a memory-mapped file
 };
 
 struct reload_params{
@@ -35,7 +35,7 @@ struct reload_params{
 	unsigned long cache_size; //maximum cache size (in bytes)
 	unsigned int minor; //requested minor number of the device
 	bool ignore_snap_errors; //whether or not to return EIO on read snap BIOs when a snap in a failed state
-							 //it should be not 0 if a snap device is used as a memory-mapped file
+	                         //it should be not 0 if a snap device is used as a memory-mapped file
 
 };
 
@@ -94,7 +94,7 @@ struct elastio_snap_info{
 	unsigned long long version;
 	unsigned long long nr_changed_blocks;
 	bool ignore_snap_errors; //whether or not to return EIO on read snap BIOs when a snap in a failed state
-							 //it should be not 0 if a snap device is used as a memory-mapped file
+	                         //it should be not 0 if a snap device is used as a memory-mapped file
 };
 
 #define IOCTL_SETUP_SNAP _IOW(ELASTIO_IOCTL_MAGIC, 1, struct setup_params) //in: see above
