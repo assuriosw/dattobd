@@ -97,14 +97,57 @@ struct elastio_snap_info{
 	                         //it should be not 0 if a snap device is used as a memory-mapped file
 };
 
-#define IOCTL_SETUP_SNAP _IOW(ELASTIO_IOCTL_MAGIC, 1, struct setup_params) //in: see above
-#define IOCTL_RELOAD_SNAP _IOW(ELASTIO_IOCTL_MAGIC, 2, struct reload_params) //in: see above
-#define IOCTL_RELOAD_INC _IOW(ELASTIO_IOCTL_MAGIC, 3, struct reload_params) //in: see above
+#define IOCTL_SETUP_SNAP _IOW(ELASTIO_IOCTL_MAGIC, 11, struct setup_params) //in: see above
+#define IOCTL_RELOAD_SNAP _IOW(ELASTIO_IOCTL_MAGIC, 12, struct reload_params) //in: see above
+#define IOCTL_RELOAD_INC _IOW(ELASTIO_IOCTL_MAGIC, 13, struct reload_params) //in: see above
 #define IOCTL_DESTROY _IOW(ELASTIO_IOCTL_MAGIC, 4, unsigned int) //in: minor
 #define IOCTL_TRANSITION_INC _IOW(ELASTIO_IOCTL_MAGIC, 5, unsigned int) //in: minor
 #define IOCTL_TRANSITION_SNAP _IOW(ELASTIO_IOCTL_MAGIC, 6, struct transition_snap_params) //in: see above
 #define IOCTL_RECONFIGURE _IOW(ELASTIO_IOCTL_MAGIC, 7, struct reconfigure_params) //in: see above
-#define IOCTL_ELASTIO_SNAP_INFO _IOR(ELASTIO_IOCTL_MAGIC, 8, struct elastio_snap_info) //in: see above
+#define IOCTL_ELASTIO_SNAP_INFO _IOR(ELASTIO_IOCTL_MAGIC, 18, struct elastio_snap_info) //in: see above
 #define IOCTL_GET_FREE _IOR(ELASTIO_IOCTL_MAGIC, 9, int)
+
+// Old structures for the backward compatibility of an old library v.0.11.1 and older and new
+// driver v.0.12.0 and newer. They do not contain 'ignore_snap_errors' member.
+struct setup_params_v0_11_1{
+	char *bdev; //name of block device to snapshot
+	char *cow; //name of cow file for snapshot
+	unsigned long fallocated_space; //space allocated to the cow file (in megabytes)
+	unsigned long cache_size; //maximum cache size (in bytes)
+	unsigned int minor; //requested minor number of the device
+};
+
+struct reload_params_v0_11_1{
+	char *bdev; //name of block device to snapshot
+	char *cow; //name of cow file for snapshot
+	unsigned long cache_size; //maximum cache size (in bytes)
+	unsigned int minor; //requested minor number of the device
+};
+
+struct elastio_snap_info_v0_11_1{
+	unsigned int minor;
+	unsigned long state;
+	int error;
+	unsigned long cache_size;
+	unsigned long long falloc_size;
+	unsigned long long seqid;
+	char uuid[COW_UUID_SIZE];
+	char cow[PATH_MAX];
+	char bdev[PATH_MAX];
+	unsigned long long version;
+	unsigned long long nr_changed_blocks;
+};
+
+/* Old IOCTLs for the backward compatibility of the new driver with an old library v.0.11.1 and older.
+ * The lib and driver should be always the same version. And it's easy to get having separate repositories for
+ * 'master' and 'release' in elastio and elastio-snap.
+ * That's why this is probably not necessary for the majority of the elastio-snap users.
+ * But the codes of 4 IOCTls are changed for easer usage and update of Elastio and/or elastio-snap
+ * to approach this backward compatibility.... Life is embarrassing.
+ */
+#define IOCTL_SETUP_SNAP_v0_11_1 _IOW(ELASTIO_IOCTL_MAGIC, 1, struct setup_params_v0_11_1) //in: see above
+#define IOCTL_RELOAD_SNAP_v0_11_1 _IOW(ELASTIO_IOCTL_MAGIC, 2, struct reload_params_v0_11_1) //in: see above
+#define IOCTL_RELOAD_INC_v0_11_1 _IOW(ELASTIO_IOCTL_MAGIC, 3, struct reload_params_v0_11_1) //in: see above
+#define IOCTL_ELASTIO_SNAP_INFO_v0_11_1 _IOR(ELASTIO_IOCTL_MAGIC, 8, struct elastio_snap_info_v0_11_1) //in: see above
 
 #endif /* ELASTIO_SNAP_H_ */
