@@ -111,6 +111,12 @@ struct path {
 #define elastio_snap_get_mnt(f) (f)->f_path.mnt
 #endif
 
+#ifdef HAVE_BDEVNAME
+#define elastio_snap_bdevname(dev, buf) bdevname(dev, buf)
+#else
+#define elastio_snap_bdevname(dev, buf) snprintf(buf, sizeof(buf), "%pg", dev);
+#endif
+
 #ifndef HAVE_PATH_PUT
 //#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25)
 void path_put(const struct path *path) {
@@ -2853,11 +2859,8 @@ static int bio_needs_cow(struct bio *bio, struct snap_device *dev){
 		return 1;
 	}
 
-// This is a tricky one:
-// HAVE_ENUM_REQ_OPF: KERNEL_VERSION >= 4.10 && KERNEL_VERSION <= 5.19
-// HAVE_ENUM_REQ_OP: KERNEL_VERSION < 4.10 && KERNEL_VERSION >= 6.0
 #if (defined HAVE_ENUM_REQ_OPF) || \
-	(defined HAVE_ENUM_REQ_OP && LINUX_VERSION_CODE >= KERNEL_VERSION(6,0,0))
+	(defined HAVE_ENUM_REQ_OP && defined HAVE_WRITE_ZEROES)
 	if(bio_op(bio) == REQ_OP_WRITE_ZEROES) return 1;
 #endif
 
@@ -3567,7 +3570,7 @@ static int inc_trace_bio(struct snap_device *dev, struct bio *bio){
 	bio_iter_bvec_t bvec;
 
 #if (defined HAVE_ENUM_REQ_OPF) || \
-	(defined HAVE_ENUM_REQ_OP && LINUX_VERSION_CODE >= KERNEL_VERSION(6,0,0))
+	(defined HAVE_ENUM_REQ_OP && defined HAVE_WRITE_ZEROES)
 	if(bio_op(bio) == REQ_OP_WRITE_ZEROES){
 		ret = inc_make_sset(dev, bio_sector(bio), bio_size(bio) / SECTOR_SIZE);
 		goto out;
@@ -3796,11 +3799,7 @@ static int find_orig_fops(struct block_device *bdev, struct block_device_operati
 			*ops = dev->sd_orig_ops;
 			*mrf = dev->sd_orig_mrf;
 			*tracing_ops = tracing_ops_get(dev->sd_tracing_ops);
-#ifdef HAVE_BDEVNAME
-			bdevname(dev->sd_base_dev, bdev_name);
-#else
-			snprintf(bdev_name, sizeof(bdev_name), "%pg", dev->sd_base_dev);
-#endif
+			elastio_snap_bdevname(dev->sd_base_dev, bdev_name);
 			LOG_DEBUG("found already traced device %s with the same original bd_ops. orig mrf = %p; orig ops = %p; tracing ops = %p", bdev_name, *mrf, *ops, *tracing_ops);
 			return 0;
 		}
@@ -3852,11 +3851,7 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 	char bdev_name[BDEVNAME_SIZE];
 	MAYBE_UNUSED(ret);
 
-#ifdef HAVE_BDEVNAME
-			bdevname(bdev, bdev_name);
-#else
-			snprintf(bdev_name, sizeof(bdev_name), "%pg", bdev);
-#endif
+	elastio_snap_bdevname(bdev, bdev_name);
 
 	if(origsb){
 		drop_super(origsb);
@@ -4077,11 +4072,7 @@ static int __tracer_setup_cow(struct snap_device *dev, struct block_device *bdev
 	uint64_t max_file_size;
 	char bdev_name[BDEVNAME_SIZE];
 
-#ifdef HAVE_BDEVNAME
-			bdevname(bdev, bdev_name);
-#else
-			snprintf(bdev_name, sizeof(bdev_name), "%pg", bdev);
-#endif
+	elastio_snap_bdevname(bdev, bdev_name);
 
 	if(open_method == 3){
 		//reopen the cow manager
@@ -4304,10 +4295,6 @@ static int __tracer_setup_snap(struct snap_device *dev, unsigned int minor, stru
 #ifdef HAVE_MERGE_BVEC_FN
 	//use a thin wrapper around the base device's merge_bvec_fn
 	if(bdev_get_queue(bdev)->merge_bvec_fn) blk_queue_merge_bvec(dev->sd_queue, snap_merge_bvec);
-#endif
-
-#ifndef HAVE_BLK_CLEANUP_QUEUE
-	set_bit(GD_OWNS_QUEUE, &dev->sd_gd->state);
 #endif
 
 	//initialize gendisk and request queue values
