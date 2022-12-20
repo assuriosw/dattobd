@@ -382,7 +382,8 @@ static int handle_info(int argc, char **argv){
 
 		if(info.error) printf("\t\"error\": %d,\n", info.error);
 
-		printf("\t\"state\": %lu\n", info.state);
+		printf("\t\"state\": %lu,\n", info.state);
+		printf("\t\"ignore_snap_errors\": %i\n", info.ignore_snap_errors);
 		printf("}\n");
 	}
 
