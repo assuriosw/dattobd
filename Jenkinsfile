@@ -53,7 +53,7 @@ def pkg_map_branches(String repo)
 {
     return [
 	'^master$': repo,
-	'^staging.*': repo + '-stg',
+	'^develop.*': repo + '-stg',
 	'^develop$': repo + '-dev',
 	]
 }
