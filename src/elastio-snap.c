@@ -1294,12 +1294,12 @@ error:
 	return ret;
 }
 
-static int get_setup_params(const struct setup_params __user *in, unsigned int *minor, char **bdev_name, char **cow_path, unsigned long *fallocated_space, unsigned long *cache_size, bool *ignore_snap_errors, bool old_struct){
+static int get_setup_params(const struct setup_params __user *in, unsigned int *minor, char **bdev_name, char **cow_path, unsigned long *fallocated_space, unsigned long *cache_size, bool *ignore_snap_errors){
 	int ret;
 	struct setup_params params;
 
 	//copy the params struct
-	ret = copy_from_user(&params, in, old_struct ? sizeof(struct setup_params_v0_11_1) : sizeof(struct setup_params));
+	ret = copy_from_user(&params, in, sizeof(struct setup_params));
 	if(ret){
 		ret = -EFAULT;
 		LOG_ERROR(ret, "error copying setup_params struct from user space");
@@ -1327,7 +1327,7 @@ static int get_setup_params(const struct setup_params __user *in, unsigned int *
 	*minor = params.minor;
 	*fallocated_space = params.fallocated_space;
 	*cache_size = params.cache_size;
-	*ignore_snap_errors = old_struct ? true : params.ignore_snap_errors;
+	*ignore_snap_errors = params.ignore_snap_errors;
 	return 0;
 
 error:
@@ -1344,12 +1344,12 @@ error:
 	return ret;
 }
 
-static int get_reload_params(const struct reload_params __user *in, unsigned int *minor, char **bdev_name, char **cow_path, unsigned long *cache_size, bool *ignore_snap_errors, bool old_struct){
+static int get_reload_params(const struct reload_params __user *in, unsigned int *minor, char **bdev_name, char **cow_path, unsigned long *cache_size, bool *ignore_snap_errors){
 	int ret;
 	struct reload_params params;
 
 	//copy the params struct
-	ret = copy_from_user(&params, in, old_struct ? sizeof(struct reload_params_v0_11_1) : sizeof(struct reload_params));
+	ret = copy_from_user(&params, in, sizeof(struct reload_params));
 	if(ret){
 		ret = -EFAULT;
 		LOG_ERROR(ret, "error copying reload_params struct from user space");
@@ -1376,7 +1376,7 @@ static int get_reload_params(const struct reload_params __user *in, unsigned int
 
 	*minor = params.minor;
 	*cache_size = params.cache_size;
-	*ignore_snap_errors = old_struct ? true : params.ignore_snap_errors;
+	*ignore_snap_errors = params.ignore_snap_errors;
 	return 0;
 
 error:
@@ -4765,27 +4765,6 @@ static void tracer_elastio_snap_info(const struct snap_device *dev, struct elast
 	}
 }
 
-static void tracer_elastio_snap_info_v0_11_1(const struct snap_device *dev, struct elastio_snap_info_v0_11_1 *info){
-	info->minor = dev->sd_minor;
-	info->state = dev->sd_state;
-	info->error = tracer_read_fail_state(dev);
-	info->cache_size = (dev->sd_cache_size)? dev->sd_cache_size : elastio_snap_cow_max_memory_default;
-	strlcpy(info->cow, dev->sd_cow_path, PATH_MAX);
-	strlcpy(info->bdev, dev->sd_bdev_path, PATH_MAX);
-
-	if(!test_bit(UNVERIFIED, &dev->sd_state)){
-		info->falloc_size = dev->sd_cow->file_max;
-		info->seqid = dev->sd_cow->seqid;
-		memcpy(info->uuid, dev->sd_cow->uuid, COW_UUID_SIZE);
-		info->version = dev->sd_cow->version;
-		info->nr_changed_blocks = dev->sd_cow->nr_changed_blocks;
-	}else{
-		info->falloc_size = 0;
-		info->seqid = 0;
-		memset(info->uuid, 0, COW_UUID_SIZE);
-	}
-}
-
 /************************IOCTL HANDLER FUNCTIONS************************/
 
 static int __verify_minor(unsigned int minor, int mode){
@@ -5024,25 +5003,19 @@ error:
 	return ret;
 }
 
-static int ioctl_elastio_snap_info(void *info, bool old_struct){
+static int ioctl_elastio_snap_info(struct elastio_snap_info *info){
 	int ret;
 	struct snap_device *dev;
-	int minor;
 
-	minor = old_struct ? ((struct elastio_snap_info_v0_11_1 *)info)->minor : ((struct elastio_snap_info*)info)->minor;
-
-	LOG_DEBUG("received elastio-snap info ioctl - %u", minor);
+	LOG_DEBUG("received elastio-snap info ioctl - %u", info->minor);
 
 	//verify that the minor number is valid
-	ret = verify_minor_in_use(minor);
+	ret = verify_minor_in_use(info->minor);
 	if(ret) goto error;
 
-	dev = snap_devices[minor];
+	dev = snap_devices[info->minor];
 
-	if (old_struct)
-		tracer_elastio_snap_info_v0_11_1(dev, (struct elastio_snap_info_v0_11_1 *)info);
-	else
-		tracer_elastio_snap_info(dev, (struct elastio_snap_info *)info);
+	tracer_elastio_snap_info(dev, info);
 
 	return 0;
 
@@ -5067,7 +5040,7 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 	int ret, idx;
 	char *bdev_path = NULL;
 	char *cow_path = NULL;
-	void *info = NULL;
+	struct elastio_snap_info *info = NULL;
 	unsigned int minor = 0;
 	unsigned long fallocated_space = 0, cache_size = 0;
 	bool ignore_snap_errors = false;
@@ -5077,9 +5050,8 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 
 	switch(cmd){
 	case IOCTL_SETUP_SNAP:
-	case IOCTL_SETUP_SNAP_v0_11_1:
 		//get params from user space
-		ret = get_setup_params((struct setup_params __user *)arg, &minor, &bdev_path, &cow_path, &fallocated_space, &cache_size, &ignore_snap_errors, cmd == IOCTL_SETUP_SNAP_v0_11_1);
+		ret = get_setup_params((struct setup_params __user *)arg, &minor, &bdev_path, &cow_path, &fallocated_space, &cache_size, &ignore_snap_errors);
 		if(ret) break;
 
 		ret = ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size, ignore_snap_errors);
@@ -5089,9 +5061,8 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 
 		break;
 	case IOCTL_RELOAD_SNAP:
-	case IOCTL_RELOAD_SNAP_v0_11_1:
 		//get params from user space
-		ret = get_reload_params((struct reload_params __user *)arg, &minor, &bdev_path, &cow_path, &cache_size, &ignore_snap_errors, cmd == IOCTL_RELOAD_SNAP_v0_11_1);
+		ret = get_reload_params((struct reload_params __user *)arg, &minor, &bdev_path, &cow_path, &cache_size, &ignore_snap_errors);
 		if(ret) break;
 
 		ret = ioctl_reload_snap(minor, bdev_path, cow_path, cache_size, ignore_snap_errors);
@@ -5099,9 +5070,8 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 
 		break;
 	case IOCTL_RELOAD_INC:
-	case IOCTL_RELOAD_INC_v0_11_1:
 		//get params from user space
-		ret = get_reload_params((struct reload_params __user *)arg, &minor, &bdev_path, &cow_path, &cache_size, &ignore_snap_errors, cmd == IOCTL_RELOAD_INC_v0_11_1);
+		ret = get_reload_params((struct reload_params __user *)arg, &minor, &bdev_path, &cow_path, &cache_size, &ignore_snap_errors);
 		if(ret) break;
 
 		ret = ioctl_reload_inc(minor, bdev_path, cow_path, cache_size, ignore_snap_errors);
@@ -5151,30 +5121,25 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 
 		break;
 	case IOCTL_ELASTIO_SNAP_INFO:
-	case IOCTL_ELASTIO_SNAP_INFO_v0_11_1:
 		//get params from user space
-		info = kmalloc(cmd == IOCTL_ELASTIO_SNAP_INFO ? sizeof(struct elastio_snap_info) : sizeof(struct elastio_snap_info_v0_11_1), GFP_KERNEL);
+		info = kmalloc(sizeof(struct elastio_snap_info), GFP_KERNEL);
 		if(!info){
 			ret = -ENOMEM;
 			LOG_ERROR(ret, "error allocating memory for elastio-snap-info");
 			break;
 		}
 
-		ret = cmd == IOCTL_ELASTIO_SNAP_INFO ?
-			copy_from_user(info, (struct elastio_snap_info __user *)arg, sizeof(struct elastio_snap_info)) :
-			copy_from_user(info, (struct elastio_snap_info_v0_11_1 __user *)arg, sizeof(struct elastio_snap_info_v0_11_1));
+		ret = copy_from_user(info, (struct elastio_snap_info __user *)arg, sizeof(struct elastio_snap_info));
 		if(ret){
 			ret = -EFAULT;
 			LOG_ERROR(ret, "error copying elastio-snap-info struct from user space");
 			break;
 		}
 
-		ret = ioctl_elastio_snap_info(info, cmd == IOCTL_ELASTIO_SNAP_INFO_v0_11_1);
+		ret = ioctl_elastio_snap_info(info);
 		if(ret) break;
 
-		ret = cmd == IOCTL_ELASTIO_SNAP_INFO ?
-			copy_to_user((struct elastio_snap_info __user *)arg, info, sizeof(struct elastio_snap_info)) :
-			copy_to_user((struct elastio_snap_info_v0_11_1 __user *)arg, info, sizeof(struct elastio_snap_info_v0_11_1));
+		ret = copy_to_user((struct elastio_snap_info __user *)arg, info, sizeof(struct elastio_snap_info));
 		if(ret){
 			ret = -EFAULT;
 			LOG_ERROR(ret, "error copying elastio-snap-info struct to user space");
