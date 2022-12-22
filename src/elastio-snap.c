@@ -2861,6 +2861,9 @@ static int bio_needs_cow(struct bio *bio, struct snap_device *dev){
 
 #if (defined HAVE_ENUM_REQ_OPF) || \
 	(defined HAVE_ENUM_REQ_OP && defined HAVE_WRITE_ZEROES)
+	// HAVE_ENUM_REQ_OPF: KERNEL_VERSION >= 4.10 && KERNEL_VERSION <= 5.19
+	// HAVE_ENUM_REQ_OP: KERNEL_VERSION < 4.10 && KERNEL_VERSION >= 6.0
+	// HAVE_WRITE_ZEROES: KERNEL_VERSION >= 4.10
 	if(bio_op(bio) == REQ_OP_WRITE_ZEROES) return 1;
 #endif
 
@@ -3571,6 +3574,9 @@ static int inc_trace_bio(struct snap_device *dev, struct bio *bio){
 
 #if (defined HAVE_ENUM_REQ_OPF) || \
 	(defined HAVE_ENUM_REQ_OP && defined HAVE_WRITE_ZEROES)
+	// HAVE_ENUM_REQ_OPF: KERNEL_VERSION >= 4.10 && KERNEL_VERSION <= 5.19
+	// HAVE_ENUM_REQ_OP: KERNEL_VERSION <= 4.9 && KERNEL_VERSION >= 6.0
+	// HAVE_WRITE_ZEROES: KERNEL_VERSION >= 4.10
 	if(bio_op(bio) == REQ_OP_WRITE_ZEROES){
 		ret = inc_make_sset(dev, bio_sector(bio), bio_size(bio) / SECTOR_SIZE);
 		goto out;
