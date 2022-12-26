@@ -19,23 +19,26 @@ This manual page describes `elioctl` briefly. More detail is available in the Gi
     -f fallocate
          Specify the maximum size of the COW file on disk.
 
+    -i
+         Specify to ignore IO errors while reading a snapshot device in case of any error. This is useful to avoid SIGBUS when using the snapshot devise as a memory-mapped file.
+
 ## SUB-COMMANDS
 
 ### setup-snapshot
 
-`elioctl setup-snapshot [-c <cache size>] [-f <fallocate>] <block device> <cow file path> <minor>`
+`elioctl setup-snapshot [-c <cache size>] [-f <fallocate>] [-i] <block device> <cow file path> <minor>`
 
 Sets up a snapshot of `<block device>`, saving all COW data to `<cow file path>`. The snapshot device will be `/dev/elastio-snap<minor>`. The minor number will be used as a reference number for all other `elioctl` commands. `<cow file path>` must be a path on the `<block device>`.
 
 ### reload-snapshot
 
-`elioctl reload-snapshot [-c <cache size>] <block device> <cow file> <minor>`
+`elioctl reload-snapshot [-c <cache size>] [-i] <block device> <cow file> <minor>`
 
 Reloads a snapshot. This command is meant to be run before the block device is mounted, after a reboot or after the driver is unloaded. It notifies the kernel driver to expect the block device specified to come back online. This command requires that the snapshot was cleanly unmounted in snapshot mode beforehand. If this is not the case, the snapshot will be put into the failure state once it attempts to come online. The minor number will be used as a reference number for all other `elioctl` commands.
 
 ### reload-incremental
 
-`elioctl reload-incremental [-c <cache size>] <block device> <cow file> <minor>`
+`elioctl reload-incremental [-c <cache size>] [-i] <block device> <cow file> <minor>`
 
 Reloads a block device that was in incremental mode. See `reload-snapshot` for restrictions.
 
@@ -62,6 +65,18 @@ Cleanly and completely removes the snapshot or incremental, unlinking the associ
 `elioctl reconfigure [-c <cache size>] <minor>`
 
 Allows you to reconfigure various parameters of a snapshot while it is online. Currently only the index cache size (given in MB) can be changed dynamically.
+
+### info
+
+`elioctl info <minor>`
+
+Allows you to get information about snapshot.
+
+### get-free-minor
+
+`elioctl get-free-minor`
+
+Allows you to get free minor value.
 
 ### EXAMPLES
 
@@ -92,6 +107,29 @@ After a reboot, this command may be performed in the early stages of boot, befor
 `# elioctl reload-incremental /dev/sda5 /var/backup/elastio1 4`
 
 This will act the same as `reload-snapshot`, but for a device that was left in incremental mode.
+
+`# elioctl info 4`
+
+This will output information about snapshot.
+```
+{
+        "minor": 4,
+        "cow_file": "/var/backup/elastio1",
+        "block_device": "/dev/sda1",
+        "max_cache": 10,
+        "fallocate": 10485760,
+        "seq_id": 1,
+        "uuid": "e86eb4fe68e84b7d90a477e02d1311a3",
+        "version": 1,
+        "nr_changed_blocks": 1536,
+        "error": -27,
+        "state": 3
+}
+```
+
+`elioctl get-free-minor`
+
+This will output first free minor value.
 
 ## Bugs
 
