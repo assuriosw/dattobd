@@ -385,7 +385,7 @@ static int handle_info(int argc, char **argv){
 
 		printf("\t\"state\": %lu,\n", info.state);
 		printf("\t\"ignore_snap_errors\": %i,\n", info.ignore_snap_errors);
-		printf("\t\"cow on bdev\": %s\n", (info.flags & COW_ON_BDEV) != 0 ? "true" : "false");
+		printf("\t\"cow_on_bdev\": %s\n", (info.flags & COW_ON_BDEV) != 0 ? "true" : "false");
 		printf("}\n");
 	}
 
