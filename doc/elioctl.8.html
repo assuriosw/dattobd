@@ -65,7 +65,7 @@
 
   <ol class='man-decor man-head man head'>
     <li class='tl'>elioctl(8)</li>
-    <li class='tc'></li>
+    <li class='tc'>elioctl Manual</li>
     <li class='tr'>elioctl(8)</li>
   </ol>
 
@@ -94,25 +94,28 @@
 
 -f fallocate
      Specify the maximum size of the COW file on disk.
+
+-i
+     Specify to ignore IO errors while reading a snapshot device in case of any error. This is useful to avoid SIGBUS when using the snapshot devise as a memory-mapped file.
 </code></pre>
 
 <h2 id="SUB-COMMANDS">SUB-COMMANDS</h2>
 
 <h3 id="setup-snapshot">setup-snapshot</h3>
 
-<p><code>elioctl setup-snapshot [-c &lt;cache size>] [-f &lt;fallocate>] &lt;block device> &lt;cow file path> &lt;minor></code></p>
+<p><code>elioctl setup-snapshot [-c &lt;cache size>] [-f &lt;fallocate>] [-i] &lt;block device> &lt;cow file path> &lt;minor></code></p>
 
 <p>Sets up a snapshot of <code>&lt;block device></code>, saving all COW data to <code>&lt;cow file path></code>. The snapshot device will be <code>/dev/elastio-snap&lt;minor></code>. The minor number will be used as a reference number for all other <code>elioctl</code> commands. <code>&lt;cow file path></code> must be a path on the <code>&lt;block device></code>.</p>
 
 <h3 id="reload-snapshot">reload-snapshot</h3>
 
-<p><code>elioctl reload-snapshot [-c &lt;cache size>] &lt;block device> &lt;cow file> &lt;minor></code></p>
+<p><code>elioctl reload-snapshot [-c &lt;cache size>] [-i] &lt;block device> &lt;cow file> &lt;minor></code></p>
 
 <p>Reloads a snapshot. This command is meant to be run before the block device is mounted, after a reboot or after the driver is unloaded. It notifies the kernel driver to expect the block device specified to come back online. This command requires that the snapshot was cleanly unmounted in snapshot mode beforehand. If this is not the case, the snapshot will be put into the failure state once it attempts to come online. The minor number will be used as a reference number for all other <code>elioctl</code> commands.</p>
 
 <h3 id="reload-incremental">reload-incremental</h3>
 
-<p><code>elioctl reload-incremental [-c &lt;cache size>] &lt;block device> &lt;cow file> &lt;minor></code></p>
+<p><code>elioctl reload-incremental [-c &lt;cache size>] [-i] &lt;block device> &lt;cow file> &lt;minor></code></p>
 
 <p>Reloads a block device that was in incremental mode. See <code>reload-snapshot</code> for restrictions.</p>
 
@@ -139,6 +142,18 @@
 <p><code>elioctl reconfigure [-c &lt;cache size>] &lt;minor></code></p>
 
 <p>Allows you to reconfigure various parameters of a snapshot while it is online. Currently only the index cache size (given in MB) can be changed dynamically.</p>
+
+<h3 id="info">info</h3>
+
+<p><code>elioctl info &lt;minor></code></p>
+
+<p>Allows you to get information about snapshot.</p>
+
+<h3 id="get-free-minor">get-free-minor</h3>
+
+<p><code>elioctl get-free-minor</code></p>
+
+<p>Allows you to get free minor value.</p>
 
 <h3 id="EXAMPLES">EXAMPLES</h3>
 
@@ -170,6 +185,29 @@
 
 <p>This will act the same as <code>reload-snapshot</code>, but for a device that was left in incremental mode.</p>
 
+<p><code># elioctl info 4</code></p>
+
+<p>This will output information about snapshot.
+<code>
+{
+        "minor": 4,
+        "cow_file": "/var/backup/elastio1",
+        "block_device": "/dev/sda1",
+        "max_cache": 10,
+        "fallocate": 10485760,
+        "seq_id": 1,
+        "uuid": "e86eb4fe68e84b7d90a477e02d1311a3",
+        "version": 1,
+        "nr_changed_blocks": 1536,
+        "error": -27,
+        "state": 3
+}
+</code></p>
+
+<p><code>elioctl get-free-minor</code></p>
+
+<p>This will output first free minor value.</p>
+
 <h2 id="Bugs">Bugs</h2>
 
 <h2 id="Author">Author</h2>
@@ -180,7 +218,7 @@
 
   <ol class='man-decor man-foot man foot'>
     <li class='tl'>Datto Inc</li>
-    <li class='tc'>March 2016</li>
+    <li class='tc'>November 2022</li>
     <li class='tr'>elioctl(8)</li>
   </ol>
 
