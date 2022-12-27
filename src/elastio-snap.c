@@ -1274,20 +1274,6 @@ static inline int wrap_err_io(struct snap_device *dev){
     return !dev->sd_ignore_snap_errors ? -EIO : 0;
 }
 
-static inline int tracer_fail_state(const struct snap_device *dev){
-	int err;
-
-	err = tracer_read_fail_state(dev);
-	if (err == 0) {
-		err = tracer_read_memory_fail_state(dev);
-		if (err == 0) {
-			err = tracer_read_cow_fail_state(dev);
-		}
-	}
-
-	return err;
-}
-
 /************************IOCTL COPY FROM USER FUNCTIONS************************/
 
 static int copy_string_from_user(const char __user *data, char **out_ptr){
@@ -4767,7 +4753,7 @@ static void tracer_reconfigure(struct snap_device *dev, unsigned long cache_size
 static void tracer_elastio_snap_info(const struct snap_device *dev, struct elastio_snap_info *info){
 	info->minor = dev->sd_minor;
 	info->state = dev->sd_state;
-	info->error = tracer_fail_state(dev);
+	info->error = tracer_read_fail_state(dev);
 	info->cache_size = (dev->sd_cache_size)? dev->sd_cache_size : elastio_snap_cow_max_memory_default;
 	info->ignore_snap_errors = dev->sd_ignore_snap_errors;
 	strlcpy(info->cow, dev->sd_cow_path, PATH_MAX);
@@ -4935,7 +4921,7 @@ static int ioctl_transition_inc(unsigned int minor){
 	wait_for_bio_complete(dev);
 
 	//check that the device is not in the fail state
-	ret = tracer_fail_state(dev);
+	ret = tracer_read_fail_state(dev);
 	if (ret) {
 		LOG_ERROR(ret, "device specified is in the fail state");
 		goto error;
@@ -6043,7 +6029,7 @@ static int elastio_snap_proc_show(struct seq_file *m, void *v){
 			}
 		}
 
-		error = tracer_fail_state(dev);
+		error = tracer_read_fail_state(dev);
 		if(error) seq_printf(m, "\t\t\t\"error\": %d,\n", error);
 
 		seq_printf(m, "\t\t\t\"state\": %lu,\n", dev->sd_state);
