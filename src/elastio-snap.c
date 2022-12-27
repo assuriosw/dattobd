@@ -4019,6 +4019,7 @@ static void __tracer_copy_base_dev(const struct snap_device *src, struct snap_de
 	dest->sd_sect_off = src->sd_sect_off;
 	dest->sd_base_dev = src->sd_base_dev;
 	dest->sd_bdev_path = src->sd_bdev_path;
+	dest->sd_cow_state = src->sd_cow_state;
 	dest->sd_ignore_snap_errors = src->sd_ignore_snap_errors;
 }
 
