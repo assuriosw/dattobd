@@ -9,7 +9,7 @@
 #include "kernel-config.h"
 #include "elastio-snap.h"
 
-//current lowest supported kernel = 2.6.18
+//current lowest supported kernel = 3.10
 
 //basic information
 MODULE_LICENSE("GPL");
