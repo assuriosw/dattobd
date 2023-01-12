@@ -51,7 +51,6 @@ int elastio_snap_get_free_minor(void);
 
 
 class Flags:
-    COW_REDIRECTED = 0
     COW_ON_BDEV = 2
 
 
