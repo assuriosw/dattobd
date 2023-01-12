@@ -1723,14 +1723,17 @@ static int pathname_concat(const char *pathname1, const char *pathname2, char **
 	return 0;
 }
 
-static inline int pathname_exists(const char *pathname){
+static inline bool pathname_exists(const char *pathname){
 	int ret;
 	struct path path = {};
 
 	ret = kern_path(pathname, LOOKUP_FOLLOW, &path);
-	path_put(&path);
+	if(ret){
+		return false;
+	}
 
-	return ret == 0;
+	path_put(&path);
+	return true;
 }
 
 static int user_mount_pathname_concat(const char __user *user_mount_path, const char *rel_path, char **path_out){
