@@ -55,12 +55,6 @@ class Flags:
     COW_ON_BDEV = 2
 
 
-class State:
-    SNAPSHOT = 1
-    ACTIVE = 2
-    UNVERIFIED = 4
-
-
 lib = ffi.dlopen("../lib/libelastio-snap.so")
 
 # It could be "class State(IntFlag):", but "IntFlag" was introduced in class "enum" of the Python 3.6,
