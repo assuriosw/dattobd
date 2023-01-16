@@ -310,7 +310,7 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         self.assertEqual(elastio_snap.destroy(self.minor), 0)
         util.unmount(self.target_mount)
 
-    def test_umount_source_snapshot(self):
+    def test_redirected_umount_source_snapshot(self):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
         self.addCleanup(elastio_snap.destroy, self.minor)
 
