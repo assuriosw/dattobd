@@ -331,7 +331,7 @@ class TestStorageRedirected(DeviceTestCaseMultipart):
         self.assertFalse(os.path.exists(self.snap_device))
         self.assertIsNone(elastio_snap.info(self.minor))
 
-    def test_umount_source_incremental(self):
+    def test_redirected_umount_source_incremental(self):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
         self.addCleanup(elastio_snap.destroy, self.minor)
         self.assertEqual(elastio_snap.transition_to_incremental(self.minor), 0)
