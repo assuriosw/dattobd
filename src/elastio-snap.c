@@ -737,82 +737,37 @@ error:
 }
 #endif
 
-/**
- * The method is used to unlock/lock CoW file before/after IO.
- * The COW file should be switched to an immutable one while the driver works to prevent it
- * from moving or copying and thus guaranteeing the correct driver's behavior.
- * Another problem which may occur just while reading the CoW file is high and uncontrolled
- * memory consumption. See comments here https://github.com/elastio/elastio-snap/issues/39
- */
-static inline void file_switch_lock(struct file *filp, bool lock, bool mark_dirty)
-{
-	struct inode *inode;
-
-	if (!filp) return;
-
-	inode = elastio_snap_get_dentry(filp)->d_inode;
-	igrab(inode);
-
-	if (lock)
-		inode->i_flags |= S_IMMUTABLE;
-	else
-		inode->i_flags &= ~S_IMMUTABLE;
-
-	if (mark_dirty)
-		mark_inode_dirty(inode);
-
-	iput(inode);
-}
-
-#define file_lock(filp) file_switch_lock(filp, true, false)
-#define file_unlock(filp) file_switch_lock(filp, false, false)
-#define file_unlock_mark_dirty(filp) file_switch_lock(filp, false, true)
-
 static inline ssize_t elastio_snap_kernel_read(struct file *filp, void *buf, size_t count, loff_t *pos){
-	ssize_t ret;
 #ifndef HAVE_KERNEL_READ_PPOS
 //#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
 	mm_segment_t old_fs;
-
-	file_unlock(filp);
+	ssize_t ret;
 
 	old_fs = get_fs();
 	set_fs(get_ds());
 	ret = vfs_read(filp, (char __user *)buf, count, pos);
 	set_fs(old_fs);
 
-	file_lock(filp);
-
 	return ret;
 #else
-	file_unlock(filp);
-	ret = kernel_read(filp, buf, count, pos);
-	file_lock(filp);
-	return ret;
+	return kernel_read(filp, buf, count, pos);
 #endif
 }
 
 static inline ssize_t elastio_snap_kernel_write(struct file *filp, const void *buf, size_t count, loff_t *pos){
-	ssize_t ret;
 #ifndef HAVE_KERNEL_WRITE_PPOS
 //#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
 	mm_segment_t old_fs;
-
-	file_unlock(filp);
+	ssize_t ret;
 
 	old_fs = get_fs();
 	set_fs(get_ds());
-
 	ret = vfs_write(filp, (__force const char __user *)buf, count, pos);
 	set_fs(old_fs);
 
-	file_lock(filp);
 	return ret;
 #else
-	file_unlock(filp);
-	ret = kernel_write(filp, buf, count, pos);
-	file_lock(filp);
-	return ret;
+	return kernel_write(filp, buf, count, pos);
 #endif
 }
 
@@ -1522,7 +1477,6 @@ static void task_work_flush(void){
 /******************************FILE OPERATIONS*******************************/
 
 static inline void file_close(struct file *f){
-	file_unlock_mark_dirty(f);
 	filp_close(f, NULL);
 }
 
@@ -1833,15 +1787,12 @@ static int file_truncate(struct file *filp, loff_t len){
 	dentry = elastio_snap_get_dentry(filp);
 	inode = dentry->d_inode;
 
-	file_unlock(filp);
 #ifdef HAVE_LOCKS_VERIFY_TRUNCATE
 	// The function has been disappeared starting from the kernel 5.15.
 	ret = locks_verify_truncate(inode, filp, len);
 #else
 	ret = vfs_truncate(&filp->f_path, len);
 #endif
-	file_lock(filp);
-
 	if(ret){
 		LOG_ERROR(ret, "error verifying truncation is possible");
 		goto error;
@@ -1926,8 +1877,6 @@ static int file_allocate(struct file *f, uint64_t offset, uint64_t length){
 	if(ret && ret != -EOPNOTSUPP) goto error;
 	else if(!ret) goto out;
 
-	file_lock(f);
-
 	//fallocate isn't supported, fall back on writing zeros
 	if(!abs_path) {
 		LOG_WARN("fallocate is not supported for this file system, falling back on writing zeros");
@@ -1999,7 +1948,6 @@ static int __file_unlink(struct file *filp, int close, int force){
 		goto mnt_error;
 	}
 
-	file_unlock(filp);
 #ifdef HAVE_VFS_UNLINK_2
 //#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 	ret = vfs_unlink(dir_inode, file_dentry);
@@ -2009,9 +1957,6 @@ static int __file_unlink(struct file *filp, int close, int force){
 #else
 	ret = vfs_unlink(&init_user_ns, dir_inode, file_dentry, NULL);
 #endif
-
-	file_lock(filp);
-
 	if(ret){
 		LOG_ERROR(ret, "error unlinking file");
 		goto error;
