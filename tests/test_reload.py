@@ -54,6 +54,7 @@ class TestReload(DeviceTestCase):
 
     def test_reload_unverified_snapshot(self):
         util.unmount(self.mount)
+        self.addCleanup(util.mount, self.device, self.mount)
 
         self.assertEqual(elastio_snap.reload_snapshot(self.minor, self.device, self.cow_reload_path, ignore_snap_errors=True), 0)
         self.addCleanup(elastio_snap.destroy, self.minor)
@@ -63,12 +64,14 @@ class TestReload(DeviceTestCase):
 
         # Mount and test that the non-existent cow file been handled
         util.mount(self.device, self.mount)
+        self.addCleanup(util.unmount, self.device, self.mount)
 
         self.check_snap_info(-errno.ENOENT, elastio_snap.State.UNVERIFIED | elastio_snap.State.SNAPSHOT, True)
 
 
     def test_reload_unverified_incremental(self):
         util.unmount(self.mount)
+        self.addCleanup(util.mount, self.device, self.mount)
 
         self.assertEqual(elastio_snap.reload_incremental(self.minor, self.device, self.cow_reload_path, ignore_snap_errors=True), 0)
         self.addCleanup(elastio_snap.destroy, self.minor)
@@ -78,6 +81,7 @@ class TestReload(DeviceTestCase):
 
         # Mount and test that the non-existent cow file been handled
         util.mount(self.device, self.mount)
+        self.addCleanup(util.unmount, self.device, self.mount)
 
         self.check_snap_info(-errno.ENOENT, elastio_snap.State.UNVERIFIED, True)
 
@@ -86,6 +90,7 @@ class TestReload(DeviceTestCase):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path, ignore_snap_errors=True), 0)
 
         util.unmount(self.mount)
+        self.addCleanup(util.mount, self.device, self.mount)
 
         self.kmod.unload()
         self.kmod.load(debug=1)
@@ -99,6 +104,7 @@ class TestReload(DeviceTestCase):
 
         # Mount and test that snapshot is active
         util.mount(self.device, self.mount)
+        self.addCleanup(util.unmount, self.device, self.mount)
 
         self.assertTrue(os.path.exists(self.cow_full_path))
         self.assertTrue(os.path.exists(self.snap_device))
@@ -111,6 +117,7 @@ class TestReload(DeviceTestCase):
         self.assertEqual(elastio_snap.transition_to_incremental(self.minor), 0)
 
         util.unmount(self.mount)
+        self.addCleanup(util.mount, self.device, self.mount)
 
         self.kmod.unload()
         self.kmod.load(debug=1)
@@ -124,6 +131,7 @@ class TestReload(DeviceTestCase):
 
         # Mount and test that snapshot is active
         util.mount(self.device, self.mount)
+        self.addCleanup(util.unmount, self.device, self.mount)
 
         self.assertTrue(os.path.exists(self.cow_full_path))
         self.assertFalse(os.path.exists(self.snap_device))
