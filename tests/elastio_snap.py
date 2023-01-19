@@ -8,6 +8,7 @@
 from cffi import FFI
 import util
 import time
+import errno
 
 ffi = FFI()
 
@@ -104,16 +105,18 @@ def reload_incremental(minor, device, cow_file, cache_size=0, ignore_snap_errors
     return 0
 
 
-def destroy(minor, retries=3, debug=True):
+def destroy(minor, retries=3):
     for retry in range(retries):
         ret = lib.elastio_snap_destroy(minor)
         if ret == 0:
             util.settle()
             return 0
         else:
-            if debug == True:
+            if ffi.errno == errno.EBUSY:
                 print('Retry {} of {}: couldn\'t destroy device (minor {})'. format(retry + 1, retries, minor))
-            time.sleep(1)
+                time.sleep(1)
+            else:
+                break;
 
     return ffi.errno
 

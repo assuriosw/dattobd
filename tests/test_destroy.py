@@ -23,7 +23,7 @@ class TestDestroy(DeviceTestCase):
         self.snap_device = "/dev/elastio-snap{}".format(self.minor)
 
     def test_destroy_nonexistent_device(self):
-        self.assertEqual(elastio_snap.destroy(self.minor, retries=1, debug=False), errno.ENOENT)
+        self.assertEqual(elastio_snap.destroy(self.minor), errno.ENOENT)
 
     def test_destroy_active_snapshot(self):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
