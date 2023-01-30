@@ -43,6 +43,12 @@ MODULE_VERSION(ELASTIO_SNAP_VERSION);
 #include <linux/percpu-refcount.h>
 #endif
 
+#define FE_COUNT       8000
+#define FE_FLAG_LAST    (1 <<  0)
+#define FE_FLAG_UNKNOWN (1 <<  1)
+#define FE_FLAG_UNALLOC (1 <<  2)
+#define FE_FLAG_NOALIGN (1 <<  8)
+
 #ifndef HAVE_BIO_LIST
 //#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30)
 struct bio_list {
@@ -725,13 +731,13 @@ static inline void file_switch_lock(struct file *filp, bool lock, bool mark_dirt
 	inode = elastio_snap_get_dentry(filp)->d_inode;
 	igrab(inode);
 
-	if (lock)
-		inode->i_flags |= S_IMMUTABLE;
-	else
-		inode->i_flags &= ~S_IMMUTABLE;
+	/* if (lock) */
+	/*     inode->i_flags |= S_IMMUTABLE; */
+	/* else */
+	/*     inode->i_flags &= ~S_IMMUTABLE; */
 
-	if (mark_dirty)
-		mark_inode_dirty(inode);
+	/* if (mark_dirty) */
+	/*     mark_inode_dirty(inode); */
 
 	iput(inode);
 }
@@ -4122,10 +4128,29 @@ static int __tracer_setup_cow(struct snap_device *dev, struct block_device *bdev
 
 	//set state flag that file is on block device
 	if (file_is_on_bdev(dev->sd_cow->filp, bdev)) {
+		struct fiemap_extent *buf = kzalloc(sizeof(struct fiemap_extent) * 20, GFP_KERNEL);
+		struct fiemap_extent_info fiemap_info = { 0 };
+
 		set_bit(COW_ON_BDEV, &dev->sd_cow_state);
 		//find the cow file's inode number
 		LOG_DEBUG("finding cow file inode");
 		dev->sd_cow_inode = elastio_snap_get_dentry(dev->sd_cow->filp)->d_inode;
+
+		memset(&fiemap_info, 0, sizeof(fiemap_info));
+		fiemap_info.fi_flags = FIEMAP_FLAG_SYNC;
+		fiemap_info.fi_extents_max = 20;
+		fiemap_info.fi_extents_start = buf;
+		LOG_DEBUG("flg before: %u", fiemap_info.fi_flags);
+		int supported_flags = 0;
+		supported_flags |= FIEMAP_FLAG_SYNC;
+		supported_flags &= FIEMAP_FLAGS_COMPAT;
+		LOG_DEBUG("flg compatibility: %u", fiemap_info.fi_flags & ~supported_flags);
+
+		ret = dev->sd_cow_inode->i_op->fiemap(dev->sd_cow_inode, &fiemap_info, 0, FIEMAP_MAX_OFFSET);
+
+		LOG_DEBUG("> fiemap for cow file (ret %d), extents %d, flg=%d", ret,
+					fiemap_info.fi_extents_mapped, fiemap_info.fi_flags);
+		kfree(buf);
 	}
 
 	if(cow_path_full != cow_path) kfree(cow_path_full);
