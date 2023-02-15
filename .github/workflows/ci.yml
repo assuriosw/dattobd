@@ -72,7 +72,7 @@ jobs:
         run: .github/scripts/check_env.sh
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v1-node16
         with:
           aws-region: ${{ env.AWS_DEFAULT_REGION }}
           role-to-assume: ${{ secrets.ASSURIODEV_OIDC_AWS_ROLE_ARN }}
