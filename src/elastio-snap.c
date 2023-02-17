@@ -1059,6 +1059,7 @@ struct cow_manager{
 	unsigned long total_sects; //total sections the cm log represents
 	unsigned long allowed_sects; //the maximum number of sections that may be allocated at once
 	struct cow_section *sects; //pointer to the array of sections of mappings
+	struct snap_device *dev;
 };
 
 struct snap_device{
@@ -1854,8 +1855,104 @@ static int file_io(struct file *filp, int is_write, void *buf, sector_t offset, 
 
 	return 0;
 }
+
 #define file_write(filp, buf, offset, len) file_io(filp, 1, buf, offset, len)
 #define file_read(filp, buf, offset, len) file_io(filp, 0, buf, offset, len)
+
+#define SECTOR_INVALID ~(u64)0
+
+sector_t sector_by_offset(struct snap_device *dev, size_t offset)
+{
+	unsigned int i;
+	struct fiemap_extent *extent = dev->sd_cow_extents;
+	for (i = 0; i < dev->sd_cow_ext_cnt; i++) {
+		if (offset > extent[i].fe_logical && offset < extent[i].fe_logical + extent[i].fe_length)
+			return (extent[i].fe_physical + offset) >> 9;
+	}
+
+	return SECTOR_INVALID;
+}
+
+int file_write_block(struct snap_device *dev, void *block, size_t offset, size_t len)
+{
+	int ret;
+	int bytes;
+	char *data;
+	struct page *pg;
+	struct bio_set *bs;
+	struct bio *new_bio;
+	struct block_device *bdev;
+	sector_t start_sect;
+	int sector_remaining = SECTORS_PER_BLOCK;
+
+	ret = 0;
+
+	WARN_ON(!IS_ALIGNED(offset, PAGE_SIZE) || len != PAGE_SIZE);
+
+write_bio:
+	bdev = dev->sd_base_dev;
+	bs = dev_bioset(dev);
+	start_sect = sector_by_offset(dev, offset);
+
+	LOG_DEBUG("attempting direct write IO on disk (offset in file = %lu, logical sect in file=%ld, phs_sect=%lld)...", offset, offset >> 9, start_sect);
+
+	new_bio = bio_alloc_bioset(GFP_NOIO, 1, bs);
+	if(!new_bio){
+		ret = -ENOMEM;
+		LOG_ERROR(ret, "error allocating bio - bs = %p", bs);
+		goto out;
+	}
+
+	bio_set_dev(new_bio, bdev);
+	elastio_snap_set_bio_ops(new_bio, REQ_OP_WRITE, 0);
+	bio_sector(new_bio) = start_sect;
+	bio_idx(new_bio) = 0;
+
+	//allocate a page and add it to our bio
+	pg = alloc_page(GFP_NOIO);
+	if(!pg){
+		ret = -ENOMEM;
+		LOG_ERROR(ret, "error allocating read bio page");
+		goto out;
+	}
+
+	pg->mapping = dev->sd_cow_inode->i_mapping;
+	data = kmap(pg);
+
+	do {
+		memcpy(data, block, SECTOR_SIZE);
+		offset += SECTOR_SIZE;
+		sector_remaining--;
+	} while (sector_remaining > 0 && sector_by_offset(dev, offset) == start_sect);
+
+	kunmap(pg);
+
+	//add the page to the bio
+	bytes = bio_add_page(new_bio, pg, PAGE_SIZE, 0);
+	if(bytes != PAGE_SIZE){
+		LOG_DEBUG("bio_add_page() error!");
+		__free_page(pg);
+		ret = -EFAULT;
+		goto out;
+	}
+
+	submit_bio_wait(new_bio);
+
+	if (sector_remaining)
+		goto write_bio;
+
+out:
+	LOG_DEBUG("write done.");
+	return ret;
+}
+
+int file_read_block(struct snap_device *dev, void *buf, size_t offset, size_t len)
+{
+	int ret = 0;
+
+	LOG_DEBUG("read done.");
+	return ret;
+}
 
 //reimplemented from linux kernel (it isn't exported in the vanilla kernel)
 static int elastio_snap_do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs, struct file *filp){
@@ -1977,7 +2074,7 @@ static int real_fallocate(struct file *f, uint64_t offset, uint64_t length){
 }
 #endif
 
-static int file_allocate(struct file *f, uint64_t offset, uint64_t length){
+static int file_allocate(struct snap_device *dev, struct file *f, uint64_t offset, uint64_t length){
 	int ret = 0;
 	char *page_buf = NULL;
 	uint64_t i, write_count;
@@ -2126,7 +2223,7 @@ static int __cow_load_section(struct cow_manager *cm, unsigned long sect_idx){
 	ret = __cow_alloc_section(cm, sect_idx, 0);
 	if(ret) goto error;
 
-	ret = file_read(cm->filp, cm->sects[sect_idx].mappings, cm->sect_size*sect_idx*8 + COW_HEADER_SIZE, cm->sect_size*8);
+	ret = file_read_block(cm->dev, cm->sects[sect_idx].mappings, cm->sect_size*sect_idx*8 + COW_HEADER_SIZE, cm->sect_size*8);
 	if(ret) goto error;
 
 	return 0;
@@ -2140,7 +2237,7 @@ error:
 static int __cow_write_section(struct cow_manager *cm, unsigned long sect_idx){
 	int ret;
 
-	ret = file_write(cm->filp, cm->sects[sect_idx].mappings, cm->sect_size*sect_idx*8 + COW_HEADER_SIZE, cm->sect_size*8);
+	ret = file_write_block(cm->dev, cm->sects[sect_idx].mappings, cm->sect_size*sect_idx*8 + COW_HEADER_SIZE, cm->sect_size*8);
 	if(ret){
 		LOG_ERROR(ret, "error writing cow manager section to file");
 		return ret;
@@ -2438,7 +2535,7 @@ error:
 	return ret;
 }
 
-static int cow_init(const char *path, uint64_t elements, unsigned long sect_size, unsigned long cache_size, uint64_t file_max, const uint8_t *uuid, uint64_t seqid, struct cow_manager **cm_out){
+static int cow_init(struct snap_device *dev, const char *path, uint64_t elements, unsigned long sect_size, unsigned long cache_size, uint64_t file_max, const uint8_t *uuid, uint64_t seqid, struct cow_manager **cm_out){
 	int ret;
 	struct cow_manager *cm;
 
@@ -2466,6 +2563,7 @@ static int cow_init(const char *path, uint64_t elements, unsigned long sect_size
 	cm->allowed_sects = __cow_calculate_allowed_sects(cache_size, cm->total_sects);
 	cm->data_offset = COW_HEADER_SIZE + (cm->total_sects * (sect_size*8));
 	cm->curr_pos = cm->data_offset / COW_BLOCK_SIZE;
+	cm->dev = dev;
 
 	if(uuid) memcpy(cm->uuid, uuid, COW_UUID_SIZE);
 	else generate_random_uuid(cm->uuid);
@@ -2484,7 +2582,7 @@ static int cow_init(const char *path, uint64_t elements, unsigned long sect_size
 	}
 
 	LOG_DEBUG("allocating cow file (%llu bytes)", (unsigned long long)file_max);
-	ret = file_allocate(cm->filp, 0, file_max);
+	ret = file_allocate(cm->dev, cm->filp, 0, file_max);
 	if(ret) goto error;
 
 	ret = __cow_write_header_dirty(cm);
@@ -2604,7 +2702,7 @@ static int __cow_write_data(struct cow_manager *cm, void *buf){
 		goto error;
 	}
 
-	ret = file_write(cm->filp, buf, curr_size, COW_BLOCK_SIZE);
+	ret = file_write_block(cm->dev, buf, curr_size, COW_BLOCK_SIZE);
 	if(ret) goto error;
 
 	cm->curr_pos++;
@@ -2647,7 +2745,7 @@ static int cow_read_data(struct cow_manager *cm, void *buf, uint64_t block_pos, 
 
 	if(block_off >= COW_BLOCK_SIZE) return -EINVAL;
 
-	ret = file_read(cm->filp, buf, (block_pos * COW_BLOCK_SIZE) + block_off, len);
+	ret = file_read_block(cm->dev, buf, (block_pos * COW_BLOCK_SIZE) + block_off, len);
 	if(ret){
 		LOG_ERROR(ret, "error reading cow data");
 		return ret;
@@ -2934,7 +3032,10 @@ static int bio_needs_cow(struct bio *bio, struct snap_device *dev){
 
 	//check the inode of each page return true if it does not match our cow file
 	bio_for_each_segment(bvec, bio, iter){
-		if(page_get_inode(bio_iter_page(bio, iter)) != dev->sd_cow_inode) return 1;
+		if(page_get_inode(bio_iter_page(bio, iter)) != dev->sd_cow_inode) {
+			LOG_DEBUG("needs cow!!");
+			return 1;
+		}
 	}
 
 	return 0;
@@ -4161,11 +4262,6 @@ static int __tracer_setup_cow(struct snap_device *dev, struct block_device *bdev
 	struct fiemap_extent *extent;
 	int (*fiemap)(struct inode *, struct fiemap_extent_info *, u64 start, u64 len);
 	
-	//uint64_t len;
-
-	MAYBE_UNUSED(cow_ext_buf);
-	MAYBE_UNUSED(cow_ext_buf_size);
-
 	elastio_snap_bdevname(bdev, bdev_name);
 
 	if(user_mount_path){
@@ -4201,7 +4297,7 @@ static int __tracer_setup_cow(struct snap_device *dev, struct block_device *bdev
 
 			//create and open the cow manager
 			LOG_DEBUG("creating cow manager");
-			ret = cow_init(cow_path_full, SECTOR_TO_BLOCK(size), COW_SECTION_SIZE, dev->sd_cache_size, max_file_size, uuid, seqid, &dev->sd_cow);
+			ret = cow_init(dev, cow_path_full, SECTOR_TO_BLOCK(size), COW_SECTION_SIZE, dev->sd_cache_size, max_file_size, uuid, seqid, &dev->sd_cow);
 			if(ret) goto error;
 		}else{
 			//reload the cow manager
@@ -5026,9 +5122,9 @@ error:
 	return ret;
 }
 
-#define ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size, ignore_snap_errors) __ioctl_setup(minor, bdev_path, cow_path, fallocated_space, cache_size, cow_ext_buf, cow_ext_buf_size, ignore_snap_errors, 1, 0)
-#define ioctl_reload_snap(minor, bdev_path, cow_path, cache_size, ignore_snap_errors) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, cow_ext_buf, cow_ext_buf_size, ignore_snap_errors, 1, 1)
-#define ioctl_reload_inc(minor, bdev_path, cow_path, cache_size, ignore_snap_errors) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, cow_ext_buf, cow_ext_buf_size, ignore_snap_errors, 0, 1)
+#define ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size, cow_ext_buf, cow_ext_buf_size, ignore_snap_errors) __ioctl_setup(minor, bdev_path, cow_path, fallocated_space, cache_size, cow_ext_buf, cow_ext_buf_size, ignore_snap_errors, 1, 0)
+#define ioctl_reload_snap(minor, bdev_path, cow_path, cache_size, ignore_snap_errors) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, NULL, 0, ignore_snap_errors, 1, 1)
+#define ioctl_reload_inc(minor, bdev_path, cow_path, cache_size, ignore_snap_errors) __ioctl_setup(minor, bdev_path, cow_path, 0, cache_size, NULL, 0, ignore_snap_errors, 0, 1)
 
 static int ioctl_destroy(unsigned int minor){
 	int ret;
@@ -5207,7 +5303,7 @@ static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 		ret = get_setup_params((struct setup_params __user *)arg, &minor, &bdev_path, &cow_path, &fallocated_space, &cache_size, &cow_ext_buf, &cow_ext_buf_size, &ignore_snap_errors);
 		if(ret) break;
 
-		ret = ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size, ignore_snap_errors);
+		ret = ioctl_setup_snap(minor, bdev_path, cow_path, fallocated_space, cache_size, cow_ext_buf, cow_ext_buf_size, ignore_snap_errors);
 		if(ret) break;
 
 		elastio_snap_wait_for_release(snap_devices[minor]);
