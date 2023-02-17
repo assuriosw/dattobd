@@ -1948,8 +1948,67 @@ out:
 
 int file_read_block(struct snap_device *dev, void *buf, size_t offset, size_t len)
 {
-	int ret = 0;
+	int ret;
+	int bytes;
+	char *data;
+	struct page *pg;
+	struct bio_set *bs;
+	struct bio *new_bio;
+	struct block_device *bdev;
+	sector_t start_sect;
+	int sector_remaining = SECTORS_PER_BLOCK;
 
+	ret = 0;
+
+	WARN_ON(!IS_ALIGNED(offset, PAGE_SIZE) || len != PAGE_SIZE);
+
+read_bio:
+	bdev = dev->sd_base_dev;
+	bs = dev_bioset(dev);
+	start_sect = sector_by_offset(dev, offset);
+
+	LOG_DEBUG("attempting direct read IO on disk (offset in file = %lu, logical sect in file=%ld, phs_sect=%lld)...", offset, offset >> 9, start_sect);
+
+	new_bio = bio_alloc_bioset(GFP_NOIO, 1, bs);
+	if(!new_bio){
+		ret = -ENOMEM;
+		LOG_ERROR(ret, "error allocating bio - bs = %p", bs);
+		goto out;
+	}
+
+	bio_set_dev(new_bio, bdev);
+	elastio_snap_set_bio_ops(new_bio, REQ_OP_READ, 0);
+	bio_sector(new_bio) = start_sect;
+	bio_idx(new_bio) = 0;
+
+	//allocate a page and add it to our bio
+	pg = alloc_page(GFP_NOIO);
+	if(!pg){
+		ret = -ENOMEM;
+		LOG_ERROR(ret, "error allocating read bio page");
+		goto out;
+	}
+
+	do {
+		offset += SECTOR_SIZE;
+		sector_remaining--;
+	} while (sector_remaining > 0 && sector_by_offset(dev, offset) == start_sect);
+
+	//add the page to the bio
+	bytes = bio_add_page(new_bio, pg, PAGE_SIZE, 0);
+	if(bytes != PAGE_SIZE){
+		LOG_DEBUG("bio_add_page() error!");
+		__free_page(pg);
+		ret = -EFAULT;
+		goto out;
+	}
+
+	submit_bio_wait(new_bio);
+
+	if (sector_remaining)
+		goto read_bio;
+
+out:
 	LOG_DEBUG("read done.");
 	return ret;
 }
