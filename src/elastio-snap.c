@@ -2801,14 +2801,20 @@ error:
 
 static int cow_read_data(struct cow_manager *cm, void *buf, uint64_t block_pos, unsigned long block_off, unsigned long len){
 	int ret;
+	char *_buf = kmalloc(COW_BLOCK_SIZE, GFP_KERNEL);
 
 	if(block_off >= COW_BLOCK_SIZE) return -EINVAL;
 
-	ret = file_read_block(cm->dev, buf, (block_pos * COW_BLOCK_SIZE) + block_off, len);
+	/* LOG_DEBUG("read offset=%d, len=%d", (block_pos * COW_BLOCK_SIZE) + block_off, len); */
+	ret = file_read_block(cm->dev, _buf, (block_pos * COW_BLOCK_SIZE), COW_BLOCK_SIZE);
 	if(ret){
 		LOG_ERROR(ret, "error reading cow data");
+		kfree(_buf);
 		return ret;
 	}
+
+	memcpy(buf, _buf + block_off, len);
+	kfree(_buf);
 
 	return 0;
 }
