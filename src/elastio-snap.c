@@ -1833,14 +1833,14 @@ int file_write_block(struct snap_device *dev, void *block, size_t offset, size_t
 	int sectors_processed;
 
 	ret = 0;
+	bs = dev_bioset(dev);
+	bdev = dev->sd_base_dev;
+	sectors_processed = 0;
 
 	WARN_ON(!IS_ALIGNED(offset, PAGE_SIZE) || len != PAGE_SIZE);
 
 write_bio:
-	bdev = dev->sd_base_dev;
-	bs = dev_bioset(dev);
 	start_sect = sector_by_offset(dev, offset);
-	/* LOG_DEBUG("attempting direct write IO on disk (offset in file = %lu, logical sect in file=%ld, phs_sect=%lld)...", offset, offset >> 9, start_sect); */
 
 	new_bio = bio_alloc_bioset(GFP_NOIO, 1, bs);
 	if(!new_bio){
@@ -1854,7 +1854,6 @@ write_bio:
 	bio_sector(new_bio) = start_sect;
 	bio_idx(new_bio) = 0;
 
-	//allocate a page and add it to our bio
 	pg = alloc_page(GFP_NOIO);
 	if(!pg){
 		ret = -ENOMEM;
@@ -1864,19 +1863,16 @@ write_bio:
 
 	data = kmap(pg);
 
-	sectors_processed = 0;
-
 	do {
 		int write_offset = sectors_processed * SECTOR_SIZE;
 		memcpy(data + write_offset, block + write_offset, SECTOR_SIZE);
 		offset += SECTOR_SIZE;
 		sectors_processed++;
-	} while (sectors_processed < SECTORS_PER_BLOCK && sector_by_offset(dev, offset) == start_sect + sectors_processed);
+	} while (sectors_processed < SECTORS_PER_BLOCK &&
+			sector_by_offset(dev, offset) == start_sect + sectors_processed);
 
 	kunmap(pg);
 
-	//add the page to the bio
-	/* LOG_DEBUG("add page!"); */
 	bytes = bio_add_page(new_bio, pg, PAGE_SIZE, 0);
 	if(bytes != PAGE_SIZE){
 		LOG_DEBUG("bio_add_page() error!");
@@ -1888,19 +1884,26 @@ write_bio:
 	pg->mapping = dev->sd_cow_inode->i_mapping;
 
 	ret = submit_bio_wait(new_bio);
-	if (ret)
-		LOG_ERROR(ret, "error submitting the bio");
+	if (ret) {
+		LOG_ERROR(ret, "submit_bio_wait() error!");
+		goto out;
+	}
 
 	pg->mapping = NULL;
 	bio_free_pages(new_bio);
 	bio_put(new_bio);
+	new_bio = NULL;
 
-	/* LOG_DEBUG("sectors_processed = %d", sectors_processed); */
 	if (sectors_processed != SECTORS_PER_BLOCK)
 		goto write_bio;
 
 out:
-	/* LOG_DEBUG("write done."); */
+	if (new_bio) {
+		pg->mapping = NULL;
+		bio_free_pages(new_bio);
+		bio_put(new_bio);
+	}
+
 	return ret;
 }
 
@@ -1913,27 +1916,23 @@ int file_read_block(struct snap_device *dev, void *buf, size_t offset, size_t le
 	struct bio *new_bio;
 	struct block_device *bdev;
 	sector_t start_sect;
-	/* bio_iter_t iter; */
-	/* bio_iter_bvec_t bvec; */
 	struct bio_vec *bvec;
 #ifdef HAVE_BVEC_ITER_ALL
 	struct bvec_iter_all iter;
 #else
 	int i = 0;
 #endif
-
 	int sectors_processed;
 
 	ret = 0;
+	bs = dev_bioset(dev);
+	bdev = dev->sd_base_dev;
+	sectors_processed = 0;
 
 	WARN_ON(!IS_ALIGNED(offset, PAGE_SIZE) || len != PAGE_SIZE);
 
 read_bio:
-	bdev = dev->sd_base_dev;
-	bs = dev_bioset(dev);
 	start_sect = sector_by_offset(dev, offset);
-
-	LOG_DEBUG("attempting direct read IO on disk (offset in file = %lu, logical sect in file=%ld, phs_sect=%lld)...", offset, offset >> 9, start_sect);
 
 	new_bio = bio_alloc_bioset(GFP_NOIO, 1, bs);
 	if(!new_bio){
@@ -1946,7 +1945,6 @@ read_bio:
 	elastio_snap_set_bio_ops(new_bio, REQ_OP_READ, 0);
 	bio_sector(new_bio) = start_sect;
 	bio_idx(new_bio) = 0;
-	/* bio_size(new_bio) = SECTORS_PER_BLOCK; */
 
 	//allocate a page and add it to our bio
 	pg = alloc_page(GFP_NOIO);
@@ -1956,14 +1954,12 @@ read_bio:
 		goto out;
 	}
 
-	sectors_processed = 0;
 	do {
 		offset += SECTOR_SIZE;
 		sectors_processed++;
-	} while (sectors_processed < SECTORS_PER_BLOCK && sector_by_offset(dev, offset) == start_sect + sectors_processed);
+	} while (sectors_processed < SECTORS_PER_BLOCK &&
+			sector_by_offset(dev, offset) == start_sect + sectors_processed);
 
-	//add the page to the bio
-	LOG_DEBUG("add page!");
 	bytes = bio_add_page(new_bio, pg, PAGE_SIZE, 0);
 	if(bytes != PAGE_SIZE){
 		LOG_DEBUG("bio_add_page() error!");
@@ -1974,19 +1970,20 @@ read_bio:
 
 	pg->mapping = dev->sd_cow_inode->i_mapping;
 
-	submit_bio_wait(new_bio);
-
-	LOG_DEBUG("sector received = %lld", bio_sector(new_bio));
+	ret = submit_bio_wait(new_bio);
+	if (ret) {
+		LOG_ERROR(ret, "submit_bio_wait() error!");
+		goto out;
+	}
 
 #ifdef HAVE_BVEC_ITER_ALL
 		bio_for_each_segment_all(bvec, new_bio, iter) {
 #else
 		bio_for_each_segment_all(bvec, new_bio, i) {
 #endif
-		struct page *pg = bvec->bv_page;//bio_iter_page(new_bio, iter);
+		struct page *pg = bvec->bv_page;
 		char *data = kmap(pg);
 		// TODO: what if more than page??!
-		LOG_DEBUG("memcpy!");
 		memcpy(buf, data, PAGE_SIZE);
 		kunmap(pg);
 	}
@@ -1994,13 +1991,17 @@ read_bio:
 	pg->mapping = NULL;
 	bio_free_pages(new_bio);
 	bio_put(new_bio);
+	new_bio = NULL;
 
-	LOG_DEBUG("sectors_processed = %d", sectors_processed);
 	if (sectors_processed != SECTORS_PER_BLOCK)
 		goto read_bio;
 
 out:
-	LOG_DEBUG("read done.");
+	if (new_bio) {
+		pg->mapping = NULL;
+		bio_free_pages(new_bio);
+		bio_put(new_bio);
+	}
 	return ret;
 }
 
