@@ -1889,7 +1889,7 @@ write_bio:
 	submit_bio_wait(new_bio);
 	/* pg->mapping = NULL; */
 	/* bio_free_pages(new_bio); */
-	/* bio_put(new_bio); */
+	bio_put(new_bio);
 
 	LOG_DEBUG("sectors_processed = %d", sectors_processed);
 	if (sectors_processed != SECTORS_PER_BLOCK)
@@ -1989,7 +1989,7 @@ read_bio:
 	}
 
 	/* bio_free_pages(new_bio); */
-	/* bio_put(new_bio); */
+	bio_put(new_bio);
 
 	LOG_DEBUG("sectors_processed = %d", sectors_processed);
 	if (sectors_processed != SECTORS_PER_BLOCK)
