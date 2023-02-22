@@ -1249,67 +1249,14 @@ static inline int wrap_err_io(struct snap_device *dev){
     return !dev->sd_ignore_snap_errors ? -EIO : 0;
 }
 
+static void test_rw(struct snap_device *dev);
+
 static int param_set_write(const char *val, const struct kernel_param *kp)
 {
-	int sect;
-	int ret;
-	int bytes;
-	char *data;
 	struct snap_device *dev;
-	struct block_device *bdev;
-	struct bio_set *bs;
-	struct bio *new_bio;
-	struct page *pg;
-
-	ret = kstrtouint(val, 0, &sect);
-	if (ret)
-		return ret;
 
 	dev = snap_devices[0];
-	if (!dev) {
-		LOG_DEBUG("no dev!");
-		return -ENODEV;
-	}
-
-	bdev = dev->sd_base_dev;
-	bs = dev_bioset(dev);
-
-	LOG_DEBUG("attempting direct write IO on disk (sector = %d)...", sect);
-
-	new_bio = bio_alloc_bioset(GFP_NOIO, 1, bs);
-	if(!new_bio){
-		ret = -ENOMEM;
-		LOG_ERROR(ret, "error allocating bio - bs = %p", bs);
-		return ret;
-	}
-
-	bio_set_dev(new_bio, bdev);
-	elastio_snap_set_bio_ops(new_bio, REQ_OP_WRITE, 0);
-	bio_sector(new_bio) = sect;
-	bio_idx(new_bio) = 0;
-
-	//allocate a page and add it to our bio
-	pg = alloc_page(GFP_NOIO);
-	if(!pg){
-		ret = -ENOMEM;
-		LOG_ERROR(ret, "error allocating read bio page");
-		return ret;
-	}
-
-	data = kmap(pg);
-
-	memset(data, 0x66, PAGE_SIZE);
-
-	kunmap(pg);
-
-	//add the page to the bio
-	bytes = bio_add_page(new_bio, pg, PAGE_SIZE, 0);
-	if(bytes != PAGE_SIZE){
-		LOG_DEBUG("alloc error!");
-		__free_page(pg);
-	}
-
-	submit_bio_wait(new_bio);
+	test_rw(dev);
 
 	LOG_DEBUG("done.");
 	return 0;
@@ -1883,7 +1830,7 @@ int file_write_block(struct snap_device *dev, void *block, size_t offset, size_t
 	struct bio *new_bio;
 	struct block_device *bdev;
 	sector_t start_sect;
-	int sector_remaining = SECTORS_PER_BLOCK;
+	int sectors_processed;
 
 	ret = 0;
 
@@ -1893,7 +1840,6 @@ write_bio:
 	bdev = dev->sd_base_dev;
 	bs = dev_bioset(dev);
 	start_sect = sector_by_offset(dev, offset);
-
 	LOG_DEBUG("attempting direct write IO on disk (offset in file = %lu, logical sect in file=%ld, phs_sect=%lld)...", offset, offset >> 9, start_sect);
 
 	new_bio = bio_alloc_bioset(GFP_NOIO, 1, bs);
@@ -1919,15 +1865,19 @@ write_bio:
 	pg->mapping = dev->sd_cow_inode->i_mapping;
 	data = kmap(pg);
 
+	sectors_processed = 0;
+
 	do {
-		memcpy(data, block, SECTOR_SIZE);
+		int write_offset = sectors_processed * SECTOR_SIZE;
+		memcpy(data + write_offset, block + write_offset, SECTOR_SIZE);
 		offset += SECTOR_SIZE;
-		sector_remaining--;
-	} while (sector_remaining > 0 && sector_by_offset(dev, offset) == start_sect);
+		sectors_processed++;
+	} while (sectors_processed < SECTORS_PER_BLOCK && sector_by_offset(dev, offset) == start_sect + sectors_processed);
 
 	kunmap(pg);
 
 	//add the page to the bio
+	LOG_DEBUG("add page!");
 	bytes = bio_add_page(new_bio, pg, PAGE_SIZE, 0);
 	if(bytes != PAGE_SIZE){
 		LOG_DEBUG("bio_add_page() error!");
@@ -1937,8 +1887,12 @@ write_bio:
 	}
 
 	submit_bio_wait(new_bio);
+	/* pg->mapping = NULL; */
+	/* bio_free_pages(new_bio); */
+	/* bio_put(new_bio); */
 
-	if (sector_remaining)
+	LOG_DEBUG("sectors_processed = %d", sectors_processed);
+	if (sectors_processed != SECTORS_PER_BLOCK)
 		goto write_bio;
 
 out:
@@ -1950,13 +1904,21 @@ int file_read_block(struct snap_device *dev, void *buf, size_t offset, size_t le
 {
 	int ret;
 	int bytes;
-	char *data;
 	struct page *pg;
 	struct bio_set *bs;
 	struct bio *new_bio;
 	struct block_device *bdev;
 	sector_t start_sect;
-	int sector_remaining = SECTORS_PER_BLOCK;
+	/* bio_iter_t iter; */
+	/* bio_iter_bvec_t bvec; */
+	struct bio_vec *bvec;
+#ifdef HAVE_BVEC_ITER_ALL
+	struct bvec_iter_all iter;
+#else
+	int i = 0;
+#endif
+
+	int sectors_processed;
 
 	ret = 0;
 
@@ -1977,9 +1939,10 @@ read_bio:
 	}
 
 	bio_set_dev(new_bio, bdev);
-	elastio_snap_set_bio_ops(new_bio, REQ_OP_READ, 0);
+	elastio_snap_set_bio_ops(new_bio, REQ_OP_READ, READ_SYNC);
 	bio_sector(new_bio) = start_sect;
 	bio_idx(new_bio) = 0;
+	/* bio_size(new_bio) = SECTORS_PER_BLOCK; */
 
 	//allocate a page and add it to our bio
 	pg = alloc_page(GFP_NOIO);
@@ -1989,12 +1952,16 @@ read_bio:
 		goto out;
 	}
 
+	pg->mapping = dev->sd_cow_inode->i_mapping;
+
+	sectors_processed = 0;
 	do {
 		offset += SECTOR_SIZE;
-		sector_remaining--;
-	} while (sector_remaining > 0 && sector_by_offset(dev, offset) == start_sect);
+		sectors_processed++;
+	} while (sectors_processed < SECTORS_PER_BLOCK && sector_by_offset(dev, offset) == start_sect + sectors_processed);
 
 	//add the page to the bio
+	LOG_DEBUG("add page!");
 	bytes = bio_add_page(new_bio, pg, PAGE_SIZE, 0);
 	if(bytes != PAGE_SIZE){
 		LOG_DEBUG("bio_add_page() error!");
@@ -2004,8 +1971,28 @@ read_bio:
 	}
 
 	submit_bio_wait(new_bio);
+	/* pg->mapping = NULL; */
 
-	if (sector_remaining)
+	LOG_DEBUG("sector received = %lld", bio_sector(new_bio));
+
+#ifdef HAVE_BVEC_ITER_ALL
+		bio_for_each_segment_all(bvec, new_bio, iter) {
+#else
+		bio_for_each_segment_all(bvec, new_bio, i) {
+#endif
+		struct page *pg = bvec->bv_page;//bio_iter_page(new_bio, iter);
+		char *data = kmap(pg);
+		// TODO: what if more than page??!
+		LOG_DEBUG("memcpy!");
+		memcpy(buf, data, PAGE_SIZE);
+		kunmap(pg);
+	}
+
+	/* bio_free_pages(new_bio); */
+	/* bio_put(new_bio); */
+
+	LOG_DEBUG("sectors_processed = %d", sectors_processed);
+	if (sectors_processed != SECTORS_PER_BLOCK)
 		goto read_bio;
 
 out:
@@ -2132,6 +2119,21 @@ static int real_fallocate(struct file *f, uint64_t offset, uint64_t length){
 	return ret;
 }
 #endif
+
+static void test_rw(struct snap_device *dev)
+{
+	char *buf = kmalloc(PAGE_SIZE, GFP_KERNEL);
+	int i = 0;
+	for (i = 0; i < 256; i++)
+		memset(buf + i*16, i, 16);
+
+	print_hex_dump(KERN_CONT, "initial buf ", DUMP_PREFIX_OFFSET, 16, 1, buf, PAGE_SIZE, false);
+	file_write_block(dev, buf, 1052672, PAGE_SIZE);
+	memset(buf, 0, PAGE_SIZE);
+	file_read_block(dev, buf, 1052672, PAGE_SIZE);
+	print_hex_dump(KERN_CONT, "read buf ", DUMP_PREFIX_OFFSET, 16, 1, buf, PAGE_SIZE, false);
+	kfree(buf);
+}
 
 static int file_allocate(struct snap_device *dev, struct file *f, uint64_t offset, uint64_t length){
 	int ret = 0;
@@ -4869,7 +4871,7 @@ static int tracer_setup_active_snap(struct snap_device *dev, unsigned int minor,
 	//inject the tracing function
 	ret = __tracer_setup_tracing(dev, minor);
 	if(ret) goto error;
-
+	
 	return 0;
 
 error:
