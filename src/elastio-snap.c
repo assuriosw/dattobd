@@ -1840,7 +1840,7 @@ write_bio:
 	bdev = dev->sd_base_dev;
 	bs = dev_bioset(dev);
 	start_sect = sector_by_offset(dev, offset);
-	LOG_DEBUG("attempting direct write IO on disk (offset in file = %lu, logical sect in file=%ld, phs_sect=%lld)...", offset, offset >> 9, start_sect);
+	/* LOG_DEBUG("attempting direct write IO on disk (offset in file = %lu, logical sect in file=%ld, phs_sect=%lld)...", offset, offset >> 9, start_sect); */
 
 	new_bio = bio_alloc_bioset(GFP_NOIO, 1, bs);
 	if(!new_bio){
@@ -1862,7 +1862,6 @@ write_bio:
 		goto out;
 	}
 
-	pg->mapping = dev->sd_cow_inode->i_mapping;
 	data = kmap(pg);
 
 	sectors_processed = 0;
@@ -1877,7 +1876,7 @@ write_bio:
 	kunmap(pg);
 
 	//add the page to the bio
-	LOG_DEBUG("add page!");
+	/* LOG_DEBUG("add page!"); */
 	bytes = bio_add_page(new_bio, pg, PAGE_SIZE, 0);
 	if(bytes != PAGE_SIZE){
 		LOG_DEBUG("bio_add_page() error!");
@@ -1886,17 +1885,22 @@ write_bio:
 		goto out;
 	}
 
-	submit_bio_wait(new_bio);
-	/* pg->mapping = NULL; */
-	/* bio_free_pages(new_bio); */
+	pg->mapping = dev->sd_cow_inode->i_mapping;
+
+	ret = submit_bio_wait(new_bio);
+	if (ret)
+		LOG_ERROR(ret, "error submitting the bio");
+
+	pg->mapping = NULL;
+	bio_free_pages(new_bio);
 	bio_put(new_bio);
 
-	LOG_DEBUG("sectors_processed = %d", sectors_processed);
+	/* LOG_DEBUG("sectors_processed = %d", sectors_processed); */
 	if (sectors_processed != SECTORS_PER_BLOCK)
 		goto write_bio;
 
 out:
-	LOG_DEBUG("write done.");
+	/* LOG_DEBUG("write done."); */
 	return ret;
 }
 
@@ -1939,7 +1943,7 @@ read_bio:
 	}
 
 	bio_set_dev(new_bio, bdev);
-	elastio_snap_set_bio_ops(new_bio, REQ_OP_READ, READ_SYNC);
+	elastio_snap_set_bio_ops(new_bio, REQ_OP_READ, 0);
 	bio_sector(new_bio) = start_sect;
 	bio_idx(new_bio) = 0;
 	/* bio_size(new_bio) = SECTORS_PER_BLOCK; */
@@ -1951,8 +1955,6 @@ read_bio:
 		LOG_ERROR(ret, "error allocating read bio page");
 		goto out;
 	}
-
-	pg->mapping = dev->sd_cow_inode->i_mapping;
 
 	sectors_processed = 0;
 	do {
@@ -1970,8 +1972,9 @@ read_bio:
 		goto out;
 	}
 
+	pg->mapping = dev->sd_cow_inode->i_mapping;
+
 	submit_bio_wait(new_bio);
-	/* pg->mapping = NULL; */
 
 	LOG_DEBUG("sector received = %lld", bio_sector(new_bio));
 
@@ -1988,7 +1991,8 @@ read_bio:
 		kunmap(pg);
 	}
 
-	/* bio_free_pages(new_bio); */
+	pg->mapping = NULL;
+	bio_free_pages(new_bio);
 	bio_put(new_bio);
 
 	LOG_DEBUG("sectors_processed = %d", sectors_processed);
@@ -3100,7 +3104,7 @@ static int bio_needs_cow(struct bio *bio, struct snap_device *dev){
 	//check the inode of each page return true if it does not match our cow file
 	bio_for_each_segment(bvec, bio, iter){
 		if(page_get_inode(bio_iter_page(bio, iter)) != dev->sd_cow_inode) {
-			LOG_DEBUG("needs cow!!");
+			/* LOG_DEBUG("needs cow!!"); */
 			return 1;
 		}
 	}
