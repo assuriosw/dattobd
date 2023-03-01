@@ -4345,7 +4345,6 @@ static void __tracer_copy_base_dev(const struct snap_device *src, struct snap_de
 static int __tracer_destroy_cow(struct snap_device *dev, int close_method){
 	int ret = 0;
 
-	dev->sd_cow_inode = NULL;
 	dev->sd_falloc_size = 0;
 	dev->sd_cache_size = 0;
 
@@ -4369,6 +4368,7 @@ static int __tracer_destroy_cow(struct snap_device *dev, int close_method){
 		dev->sd_cow_extents = NULL;
 	}
 	dev->sd_cow_ext_cnt = 0;
+	dev->sd_cow_inode = NULL;
 
 	return ret;
 }
@@ -5991,10 +5991,52 @@ static asmlinkage long umount_hook(char __user *name, int flags){
 	long sys_ret;
 	unsigned int idx;
 	char* buff_dev_name = NULL;
+	char comm[TASK_COMM_LEN];
 
 #ifdef USE_ARCH_MOUNT_FUNCS
 	unsigned long flags;
 	char *name;
+	char *mem;
+
+	struct task_struct *ts = get_current();
+	LOG_DEBUG("   process name: [%s]", get_task_comm(comm, ts));
+
+	unsigned long addr = get_unmapped_area(NULL, 0, PAGE_SIZE, 0, VM_READ | VM_WRITE);
+	LOG_DEBUG("addr = %lu", addr);
+
+	struct vm_area_struct * (*vm_area_alloc)(struct mm_struct *mm) = (VM_AREA_ALLOC_ADDR != 0) ?
+        (struct vm_area_struct * (*)(struct mm_struct *mm)) (VM_AREA_ALLOC_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
+
+	void (*vm_area_free)(struct vm_area_struct *vma) = (VM_AREA_FREE_ADDR != 0) ?
+        (void (*)(struct vm_area_struct *vma)) (VM_AREA_FREE_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
+
+	down_write(&ts->mm->mmap_sem);
+	struct vm_area_struct *vma = vm_area_alloc(ts->mm);
+	if (!vma) goto sem_unlock;
+
+	unsigned long vm_flags = VM_READ | VM_WRITE;
+	vma->vm_start = addr;
+	vma->vm_end = addr + PAGE_SIZE;
+	vma->vm_flags = vm_flags;
+	vma->vm_page_prot = vm_get_page_prot(vm_flags);
+	vma->vm_pgoff = 0;
+
+	struct page *pg = alloc_page(GFP_USER);
+	if (!pg) goto sem_unlock;
+
+	unsigned long pfn = page_to_pfn(pg);
+	ret = remap_pfn_range(vma, vma->vm_start, pfn, PAGE_SIZE, PAGE_SHARED);
+	if (ret < 0) {
+		pr_err("could not map the address area\n");
+		goto sem_unlock;
+	}
+
+	cow_file_get_extents(snap_devices[0], snap_devices[0]->sd_cow->filp, (__user uint8_t *) addr, PAGE_SIZE);
+	LOG_DEBUG("mem to map to the user space of %s: %p", comm, mem);
+	__free_page(pg);
+	vm_area_free(vma);
+sem_unlock:
+	up_write(&ts->mm->mmap_sem);
 
 	ret = umount_hook_extract_params(regs, &name, &flags);
 	if (ret) {
