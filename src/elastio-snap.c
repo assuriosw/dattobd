@@ -2391,7 +2391,6 @@ static int __cow_write_header(struct cow_manager *cm, int is_clean){
 	ch->version = cm->version;
 	ch->nr_changed_blocks = cm->nr_changed_blocks;
 
-	LOG_DEBUG("__cow_write_header inode = %p", cm->filp->f_inode);
 	ret = file_write_block(cm->dev, ch, 0, 1);
 	if(ret){
 		LOG_ERROR(ret, "error syncing cow manager header");
@@ -2611,23 +2610,109 @@ error:
 	return ret;
 }
 
-static int cow_file_get_extents(struct snap_device *dev, struct file *filp, __user uint8_t *cow_ext_buf, unsigned long cow_ext_buf_size)
+static inline void elastio_snap_mm_lock(struct mm_struct *mm)
 {
-	int ret = 0;
+	// TODO: fix for other kernel versions
+	down_write(&mm->mmap_sem);
+}
+
+static inline void elastio_snap_mm_unlock(struct mm_struct *mm)
+{
+	// TODO: fix for other kernel versions
+	up_write(&mm->mmap_sem);
+}
+
+static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct file *filp)
+{
+	int ret;
 	struct fiemap_extent_info fiemap_info;
 	unsigned int fiemap_mapped_extents_size, i_ext;
 	struct fiemap_extent *extent;
+	char parent_process_name[TASK_COMM_LEN];
+	unsigned long vm_flags = VM_READ | VM_WRITE;
+	unsigned long start_addr;
+	struct task_struct *task;
+	struct vm_area_struct *vma;
+	struct page *pg;
+	__user uint8_t *cow_ext_buf;
+	size_t cow_ext_buf_size;
+
 	int (*fiemap)(struct inode *, struct fiemap_extent_info *, u64 start, u64 len);
-	
-	struct inode *inode = filp->f_inode;
-	fiemap = inode->i_op->fiemap;
+
+	struct vm_area_struct * (*vm_area_alloc)(struct mm_struct *mm) = (VM_AREA_ALLOC_ADDR != 0) ?
+        (struct vm_area_struct * (*)(struct mm_struct *mm)) (VM_AREA_ALLOC_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
+
+	void (*vm_area_free)(struct vm_area_struct *vma) = (VM_AREA_FREE_ADDR != 0) ?
+        (void (*)(struct vm_area_struct *vma)) (VM_AREA_FREE_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
+
+	if (!vm_area_alloc) {
+		LOG_ERROR(-ENOTSUPP, "vm_area_alloc() was not found");
+		return -ENOTSUPP;
+	}
+
+	if (!vm_area_free) {
+		LOG_ERROR(-ENOTSUPP, "vm_area_free() was not found");
+		return -ENOTSUPP;
+	}
+
+	fiemap = NULL;
+	task = get_current();
+
+	LOG_DEBUG("Getting cow file extents from filp=%p", filp);
+	LOG_DEBUG("Attempting page stealing from %s", get_task_comm(parent_process_name, task));
+
+	start_addr = get_unmapped_area(NULL, 0, PAGE_SIZE, 0, VM_READ | VM_WRITE);
+	if (IS_ERR_VALUE(start_addr))
+		return start_addr; // returns -EPERM if failed
+
+	elastio_snap_mm_lock(task->mm);
+
+	// we brutally impose a page to the parent process
+	vma = vm_area_alloc(task->mm);
+	if (!vma) {
+		ret = -ENOMEM;
+		LOG_ERROR(ret, "vm_area_alloc() failed");
+		elastio_snap_mm_unlock(task->mm);
+		return ret;
+	}
+
+	vma->vm_start = start_addr;
+	vma->vm_end = start_addr + PAGE_SIZE;
+	vma->vm_flags = vm_flags;
+	vma->vm_page_prot = vm_get_page_prot(vm_flags);
+	vma->vm_pgoff = 0;
+
+	pg = alloc_page(GFP_USER);
+	if (!pg) {
+		ret = -ENOMEM;
+		LOG_ERROR(ret, "alloc_page() failed");
+		vm_area_free(vma);
+		elastio_snap_mm_unlock(task->mm);
+		return ret;
+	}
+
+	ret = remap_pfn_range(vma, vma->vm_start, page_to_pfn(pg), PAGE_SIZE, PAGE_SHARED);
+	if (ret < 0) {
+		LOG_ERROR(ret, "remap_pfn_range() failed");
+		__free_page(pg);
+		vm_area_free(vma);
+		elastio_snap_mm_unlock(task->mm);
+		return ret;
+	}
+
+	cow_ext_buf = (__user uint8_t *) start_addr;
+	cow_ext_buf_size = PAGE_SIZE;
+
+	if (filp->f_inode->i_op)
+		fiemap = filp->f_inode->i_op->fiemap;
+
 	if (fiemap) {
 		fiemap_info.fi_flags = FIEMAP_FLAG_SYNC;
 		fiemap_info.fi_extents_mapped = 0;
 		fiemap_info.fi_extents_max = do_div(cow_ext_buf_size, sizeof(struct fiemap_extent));
 		fiemap_info.fi_extents_start = (struct fiemap_extent __user *)cow_ext_buf;
 
-		ret = fiemap(inode, &fiemap_info, 0, FIEMAP_MAX_OFFSET);
+		ret = fiemap(filp->f_inode, &fiemap_info, 0, FIEMAP_MAX_OFFSET);
 
 		LOG_DEBUG("fiemap for cow file (ret %d), extents %u (max %u)", ret,
 				fiemap_info.fi_extents_mapped, fiemap_info.fi_extents_max);
@@ -2638,10 +2723,8 @@ static int cow_file_get_extents(struct snap_device *dev, struct file *filp, __us
 			dev->sd_cow_extents = kmalloc(fiemap_mapped_extents_size, GFP_KERNEL);
 			if (dev->sd_cow_extents) {
 				ret = copy_from_user(dev->sd_cow_extents, cow_ext_buf, fiemap_mapped_extents_size);
-				if (!ret)
-				{
+				if (!ret) {
 					dev->sd_cow_ext_cnt = fiemap_info.fi_extents_mapped;
-					// debug output cow file extents
 					extent = dev->sd_cow_extents;
 					for (i_ext = 0; i_ext < fiemap_info.fi_extents_mapped; ++i_ext, ++extent) {
 						LOG_DEBUG("   cow file extent: log 0x%llx, phy 0x%llx, len %llu", extent->fe_logical, extent->fe_physical, extent->fe_length);
@@ -2652,8 +2735,13 @@ static int cow_file_get_extents(struct snap_device *dev, struct file *filp, __us
 	} else {
 		ret = -ENOTSUPP;
 		LOG_ERROR(ret, "fiemap not supported");
-		return ret;
+		goto out;
 	}
+
+out:
+	__free_page(pg);
+	vm_area_free(vma);
+	elastio_snap_mm_unlock(task->mm);
 
 	return ret;
 }
@@ -2708,7 +2796,7 @@ static int cow_init(struct snap_device *dev, const char *path, uint64_t elements
 	ret = file_allocate(cm->dev, cm->filp, 0, file_max);
 	if(ret) goto error;
 
-	ret = cow_file_get_extents(dev, cm->filp, cow_ext_buf, cow_ext_buf_size);
+	ret = elastio_snap_get_cow_file_extents(dev, cm->filp);
 	if (ret) goto error;
 
 	dev->sd_cow_inode = cm->filp->f_inode;
@@ -5991,52 +6079,10 @@ static asmlinkage long umount_hook(char __user *name, int flags){
 	long sys_ret;
 	unsigned int idx;
 	char* buff_dev_name = NULL;
-	char comm[TASK_COMM_LEN];
 
 #ifdef USE_ARCH_MOUNT_FUNCS
 	unsigned long flags;
 	char *name;
-	char *mem;
-
-	struct task_struct *ts = get_current();
-	LOG_DEBUG("   process name: [%s]", get_task_comm(comm, ts));
-
-	unsigned long addr = get_unmapped_area(NULL, 0, PAGE_SIZE, 0, VM_READ | VM_WRITE);
-	LOG_DEBUG("addr = %lu", addr);
-
-	struct vm_area_struct * (*vm_area_alloc)(struct mm_struct *mm) = (VM_AREA_ALLOC_ADDR != 0) ?
-        (struct vm_area_struct * (*)(struct mm_struct *mm)) (VM_AREA_ALLOC_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
-
-	void (*vm_area_free)(struct vm_area_struct *vma) = (VM_AREA_FREE_ADDR != 0) ?
-        (void (*)(struct vm_area_struct *vma)) (VM_AREA_FREE_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
-
-	down_write(&ts->mm->mmap_sem);
-	struct vm_area_struct *vma = vm_area_alloc(ts->mm);
-	if (!vma) goto sem_unlock;
-
-	unsigned long vm_flags = VM_READ | VM_WRITE;
-	vma->vm_start = addr;
-	vma->vm_end = addr + PAGE_SIZE;
-	vma->vm_flags = vm_flags;
-	vma->vm_page_prot = vm_get_page_prot(vm_flags);
-	vma->vm_pgoff = 0;
-
-	struct page *pg = alloc_page(GFP_USER);
-	if (!pg) goto sem_unlock;
-
-	unsigned long pfn = page_to_pfn(pg);
-	ret = remap_pfn_range(vma, vma->vm_start, pfn, PAGE_SIZE, PAGE_SHARED);
-	if (ret < 0) {
-		pr_err("could not map the address area\n");
-		goto sem_unlock;
-	}
-
-	cow_file_get_extents(snap_devices[0], snap_devices[0]->sd_cow->filp, (__user uint8_t *) addr, PAGE_SIZE);
-	LOG_DEBUG("mem to map to the user space of %s: %p", comm, mem);
-	__free_page(pg);
-	vm_area_free(vma);
-sem_unlock:
-	up_write(&ts->mm->mmap_sem);
 
 	ret = umount_hook_extract_params(regs, &name, &flags);
 	if (ret) {
