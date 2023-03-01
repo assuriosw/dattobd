@@ -2408,7 +2408,7 @@ static int __cow_open_header(struct cow_manager *cm, int index_only, int reset_v
 	int ret;
 	struct cow_header ch;
 
-	ret = file_read(cm->filp, &ch, 0, sizeof(struct cow_header));
+	ret = file_read_block(cm->dev, &ch, 0, 1);
 	if(ret) goto error;
 
 	if(ch.magic != COW_MAGIC){
