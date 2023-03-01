@@ -2522,94 +2522,6 @@ error:
 	return ret;
 }
 
-static int cow_reopen(struct cow_manager *cm, const char *pathname){
-	int ret;
-
-	LOG_DEBUG("reopening cow file");
-	ret = file_open(pathname, 0, &cm->filp);
-	if(ret) goto error;
-
-	LOG_DEBUG("opening cow header");
-	ret = __cow_open_header(cm, (cm->flags & (1 << COW_INDEX_ONLY)), 0);
-	if(ret) goto error;
-
-	return 0;
-
-error:
-	LOG_ERROR(ret, "error reopening cow manager");
-	if(cm->filp) file_close(cm->filp);
-	cm->filp = NULL;
-
-	return ret;
-}
-
-static unsigned long __cow_calculate_allowed_sects(unsigned long cache_size, unsigned long total_sects){
-	if(cache_size <= (total_sects * sizeof(struct cow_section))) return 0;
-	else return (cache_size - (total_sects * sizeof(struct cow_section))) / (COW_SECTION_SIZE * 8);
-}
-
-static int cow_reload(const char *path, uint64_t elements, unsigned long sect_size, unsigned long cache_size, int index_only, struct cow_manager **cm_out){
-	int ret;
-	unsigned long i;
-	struct cow_manager *cm;
-
-	LOG_DEBUG("allocating cow manager");
-	cm = kzalloc(sizeof(struct cow_manager), GFP_KERNEL);
-	if(!cm){
-		ret = -ENOMEM;
-		LOG_ERROR(ret, "error allocating cow manager");
-		goto error;
-	}
-
-	LOG_DEBUG("opening cow file");
-	ret = file_open(path, 0, &cm->filp);
-	if(ret) goto error;
-
-	cm->allocated_sects = 0;
-	cm->sect_size = sect_size;
-	cm->log_sect_pages = get_order(sect_size*8);
-	cm->total_sects = NUM_SEGMENTS(elements, cm->log_sect_pages + PAGE_SHIFT - 3);
-	cm->allowed_sects = __cow_calculate_allowed_sects(cache_size, cm->total_sects);
-	cm->data_offset = COW_HEADER_SIZE + (cm->total_sects * (sect_size*8));
-
-	ret = __cow_open_header(cm, index_only, 1);
-	if(ret) goto error;
-
-	LOG_DEBUG("allocating cow manager array (%lu sections)", cm->total_sects);
-	cm->sects = kzalloc((cm->total_sects) * sizeof(struct cow_section), GFP_KERNEL | __GFP_NOWARN);
-	if(!cm->sects){
-		//try falling back to vmalloc
-		cm->flags |= (1 << COW_VMALLOC_UPPER);
-		cm->sects = vzalloc((cm->total_sects) * sizeof(struct cow_section));
-		if(!cm->sects){
-			ret = -ENOMEM;
-			LOG_ERROR(ret, "error allocating cow manager sects array");
-			goto error;
-		}
-	}
-
-	for(i=0; i<cm->total_sects; i++){
-		cm->sects[i].has_data = 1;
-	}
-
-	*cm_out = cm;
-	return 0;
-
-error:
-	LOG_ERROR(ret, "error during cow manager initialization");
-	if(cm->filp) file_close(cm->filp);
-
-	if(cm->sects){
-		if(cm->flags & (1 << COW_VMALLOC_UPPER)) vfree(cm->sects);
-		else kfree(cm->sects);
-	}
-
-	if(cm) kfree(cm);
-
-	*cm_out = NULL;
-	return ret;
-}
-
 static inline void elastio_snap_mm_lock(struct mm_struct *mm)
 {
 	// TODO: fix for other kernel versions
@@ -2743,6 +2655,100 @@ out:
 	vm_area_free(vma);
 	elastio_snap_mm_unlock(task->mm);
 
+	return ret;
+}
+
+static int cow_reopen(struct cow_manager *cm, const char *pathname){
+	int ret;
+
+	LOG_DEBUG("reopening cow file");
+	ret = file_open(pathname, 0, &cm->filp);
+	if(ret) goto error;
+
+	ret = elastio_snap_get_cow_file_extents(cm->dev, cm->filp);
+	if (ret) goto error;
+
+	LOG_DEBUG("opening cow header");
+	ret = __cow_open_header(cm, (cm->flags & (1 << COW_INDEX_ONLY)), 0);
+	if(ret) goto error;
+
+	return 0;
+
+error:
+	LOG_ERROR(ret, "error reopening cow manager");
+	if(cm->filp) file_close(cm->filp);
+	cm->filp = NULL;
+
+	return ret;
+}
+
+static unsigned long __cow_calculate_allowed_sects(unsigned long cache_size, unsigned long total_sects){
+	if(cache_size <= (total_sects * sizeof(struct cow_section))) return 0;
+	else return (cache_size - (total_sects * sizeof(struct cow_section))) / (COW_SECTION_SIZE * 8);
+}
+
+static int cow_reload(struct snap_device *dev, const char *path, uint64_t elements, unsigned long sect_size, unsigned long cache_size, int index_only, struct cow_manager **cm_out){
+	int ret;
+	unsigned long i;
+	struct cow_manager *cm;
+
+	LOG_DEBUG("allocating cow manager");
+	cm = kzalloc(sizeof(struct cow_manager), GFP_KERNEL);
+	if(!cm){
+		ret = -ENOMEM;
+		LOG_ERROR(ret, "error allocating cow manager");
+		goto error;
+	}
+
+	LOG_DEBUG("opening cow file");
+	ret = file_open(path, 0, &cm->filp);
+	if(ret) goto error;
+
+	cm->allocated_sects = 0;
+	cm->sect_size = sect_size;
+	cm->log_sect_pages = get_order(sect_size*8);
+	cm->total_sects = NUM_SEGMENTS(elements, cm->log_sect_pages + PAGE_SHIFT - 3);
+	cm->allowed_sects = __cow_calculate_allowed_sects(cache_size, cm->total_sects);
+	cm->data_offset = COW_HEADER_SIZE + (cm->total_sects * (sect_size*8));
+
+	ret = elastio_snap_get_cow_file_extents(dev, cm->filp);
+	if (ret) goto error;
+
+	ret = __cow_open_header(cm, index_only, 1);
+	if(ret) goto error;
+
+	LOG_DEBUG("allocating cow manager array (%lu sections)", cm->total_sects);
+	cm->sects = kzalloc((cm->total_sects) * sizeof(struct cow_section), GFP_KERNEL | __GFP_NOWARN);
+	if(!cm->sects){
+		//try falling back to vmalloc
+		cm->flags |= (1 << COW_VMALLOC_UPPER);
+		cm->sects = vzalloc((cm->total_sects) * sizeof(struct cow_section));
+		if(!cm->sects){
+			ret = -ENOMEM;
+			LOG_ERROR(ret, "error allocating cow manager sects array");
+			goto error;
+		}
+	}
+
+	for(i=0; i<cm->total_sects; i++){
+		cm->sects[i].has_data = 1;
+	}
+
+	*cm_out = cm;
+	return 0;
+
+error:
+	LOG_ERROR(ret, "error during cow manager initialization");
+	if(cm->filp) file_close(cm->filp);
+
+	if(cm->sects){
+		if(cm->flags & (1 << COW_VMALLOC_UPPER)) vfree(cm->sects);
+		else kfree(cm->sects);
+	}
+
+	if(cm) kfree(cm);
+
+	*cm_out = NULL;
 	return ret;
 }
 
@@ -4524,7 +4530,7 @@ static int __tracer_setup_cow(struct snap_device *dev, struct block_device *bdev
 		}else{
 			//reload the cow manager
 			LOG_DEBUG("reloading cow manager");
-			ret = cow_reload(cow_path_full, SECTOR_TO_BLOCK(size), COW_SECTION_SIZE, dev->sd_cache_size, (open_method == 2), &dev->sd_cow);
+			ret = cow_reload(dev, cow_path_full, SECTOR_TO_BLOCK(size), COW_SECTION_SIZE, dev->sd_cache_size, (open_method == 2), &dev->sd_cow);
 			if(ret) goto error;
 
 			dev->sd_falloc_size = dev->sd_cow->file_max;
