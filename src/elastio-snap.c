@@ -27,6 +27,8 @@ MODULE_VERSION(ELASTIO_SNAP_VERSION);
 #define LOG_ERROR(error, fmt, args...) printk(KERN_ERR "elastio-snap: " fmt ": %d\n", ## args, error)
 #define PRINT_BIO(text, bio) LOG_DEBUG(text ": sect = %llu size = %u", (unsigned long long)bio_sector(bio), bio_size(bio) / 512)
 
+/*********************************REDEFINED FUNCTIONS*******************************/
+
 #include <linux/delay.h>
 #include <linux/fiemap.h>
 
@@ -5035,7 +5037,7 @@ static int tracer_setup_active_snap(struct snap_device *dev, unsigned int minor,
 	//inject the tracing function
 	ret = __tracer_setup_tracing(dev, minor);
 	if(ret) goto error;
-	
+
 	return 0;
 
 error:

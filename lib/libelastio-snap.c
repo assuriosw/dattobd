@@ -27,7 +27,7 @@ int elastio_snap_setup_snapshot(unsigned int minor, char *bdev, char *cow, unsig
 	sp.ignore_snap_errors = ignore_snap_errors;
 
 	ret = ioctl(fd, IOCTL_SETUP_SNAP, &sp);
-	
+
 	close(fd);
 	return ret;
 }
