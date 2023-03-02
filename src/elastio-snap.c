@@ -1840,6 +1840,8 @@ int file_write_block(struct snap_device *dev, void *block, size_t offset, size_t
 
 	WARN_ON(!IS_ALIGNED(offset, PAGE_SIZE) || len > SECTORS_PER_BLOCK);
 
+	file_unlock(dev->sd_cow->filp);
+
 write_bio:
 	start_sect = sector_by_offset(dev, offset);
 
@@ -1906,6 +1908,7 @@ out:
 		bio_put(new_bio);
 	}
 
+	file_lock(dev->sd_cow->filp);
 	return ret;
 }
 
@@ -1932,6 +1935,8 @@ int file_read_block(struct snap_device *dev, void *buf, size_t offset, size_t le
 	sectors_processed = 0;
 
 	WARN_ON(!IS_ALIGNED(offset, PAGE_SIZE) || len > SECTORS_PER_BLOCK);
+
+	file_unlock(dev->sd_cow->filp);
 
 read_bio:
 	start_sect = sector_by_offset(dev, offset);
@@ -2005,6 +2010,9 @@ out:
 		bio_free_pages(new_bio);
 		bio_put(new_bio);
 	}
+
+	file_lock(dev->sd_cow->filp);
+
 	return ret;
 }
 
@@ -2557,6 +2565,9 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 	void (*vm_area_free)(struct vm_area_struct *vma) = (VM_AREA_FREE_ADDR != 0) ?
         (void (*)(struct vm_area_struct *vma)) (VM_AREA_FREE_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
 
+	int (*insert_vm_struct)(struct mm_struct *mm, struct vm_area_struct *vma) = (INSERT_VM_STRUCT_ADDR != 0) ?
+        (int (*)(struct mm_struct *mm, struct vm_area_struct *vma)) (INSERT_VM_STRUCT_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
+
 	if (!vm_area_alloc) {
 		LOG_ERROR(-ENOTSUPP, "vm_area_alloc() was not found");
 		return -ENOTSUPP;
@@ -2564,6 +2575,11 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 
 	if (!vm_area_free) {
 		LOG_ERROR(-ENOTSUPP, "vm_area_free() was not found");
+		return -ENOTSUPP;
+	}
+
+	if (!insert_vm_struct) {
+		LOG_ERROR(-ENOTSUPP, "insert_vm_struct() was not found");
 		return -ENOTSUPP;
 	}
 
@@ -2593,6 +2609,15 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 	vma->vm_flags = vm_flags;
 	vma->vm_page_prot = vm_get_page_prot(vm_flags);
 	vma->vm_pgoff = 0;
+
+	ret = insert_vm_struct(task->mm, vma);
+	if (ret < 0) {
+		ret = -EINVAL;
+		LOG_ERROR(ret, "insert_vm_struct() failed");
+		vm_area_free(vma);
+		elastio_snap_mm_unlock(task->mm);
+		return ret;
+	}
 
 	pg = alloc_page(GFP_USER);
 	if (!pg) {
@@ -2652,7 +2677,8 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 
 out:
 	__free_page(pg);
-	vm_area_free(vma);
+	// yes, this is commented. TODO: explain why
+	/* vm_area_free(vma); */
 	elastio_snap_mm_unlock(task->mm);
 
 	return ret;
@@ -2807,11 +2833,12 @@ static int cow_init(struct snap_device *dev, const char *path, uint64_t elements
 
 	dev->sd_cow_inode = cm->filp->f_inode;
 
+	*cm_out = cm;
+
 	LOG_DEBUG("writing cow header");
 	ret = __cow_write_header_dirty(cm);
 	if(ret) goto error;
 
-	*cm_out = cm;
 	return 0;
 
 error:
