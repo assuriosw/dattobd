@@ -22,8 +22,6 @@
 struct setup_params{
 	char *bdev; //name of block device to snapshot
 	char *cow; //name of cow file for snapshot
-	uint8_t *cow_ext_buf;
-	unsigned long cow_ext_buf_size;
 	unsigned long fallocated_space; //space allocated to the cow file (in megabytes)
 	unsigned long cache_size; //maximum cache size (in bytes)
 	unsigned int minor; //requested minor number of the device

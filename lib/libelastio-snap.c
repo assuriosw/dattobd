@@ -25,14 +25,9 @@ int elastio_snap_setup_snapshot(unsigned int minor, char *bdev, char *cow, unsig
 	sp.fallocated_space = fallocated_space;
 	sp.cache_size = cache_size;
 	sp.ignore_snap_errors = ignore_snap_errors;
-	sp.cow_ext_buf_size = 2048;
-	sp.cow_ext_buf = calloc(1, sp.cow_ext_buf_size);
-	if (sp.cow_ext_buf == NULL) return -1;
 
 	ret = ioctl(fd, IOCTL_SETUP_SNAP, &sp);
 	
-	free(sp.cow_ext_buf);
-
 	close(fd);
 	return ret;
 }
