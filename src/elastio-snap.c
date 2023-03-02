@@ -2419,7 +2419,11 @@ static int __cow_write_header(struct cow_manager *cm, int is_clean){
 
 static int __cow_open_header(struct cow_manager *cm, int index_only, int reset_vmalloc){
 	int ret;
-	struct cow_header *ch = kmalloc(SECTOR_SIZE, GFP_KERNEL);
+	struct cow_header *ch = kzalloc(SECTOR_SIZE, GFP_KERNEL);
+	if (!ch) {
+		LOG_ERROR(-ENOMEM, "allocation failed");
+		return -ENOMEM;
+	}
 
 	ret = file_read_block(cm->dev, ch, 0, 1);
 	if(ret) goto error;
