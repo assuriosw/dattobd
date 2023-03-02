@@ -1840,7 +1840,8 @@ int file_write_block(struct snap_device *dev, void *block, size_t offset, size_t
 
 	WARN_ON(!IS_ALIGNED(offset, PAGE_SIZE) || len > SECTORS_PER_BLOCK);
 
-	file_unlock(dev->sd_cow->filp);
+	if (dev->sd_cow)
+		file_unlock(dev->sd_cow->filp);
 
 write_bio:
 	start_sect = sector_by_offset(dev, offset);
@@ -1908,7 +1909,9 @@ out:
 		bio_put(new_bio);
 	}
 
-	file_lock(dev->sd_cow->filp);
+	if (dev->sd_cow)
+		file_lock(dev->sd_cow->filp);
+
 	return ret;
 }
 
@@ -1936,7 +1939,8 @@ int file_read_block(struct snap_device *dev, void *buf, size_t offset, size_t le
 
 	WARN_ON(!IS_ALIGNED(offset, PAGE_SIZE) || len > SECTORS_PER_BLOCK);
 
-	file_unlock(dev->sd_cow->filp);
+	if (dev->sd_cow)
+		file_unlock(dev->sd_cow->filp);
 
 read_bio:
 	start_sect = sector_by_offset(dev, offset);
@@ -1992,7 +1996,7 @@ read_bio:
 			struct page *pg = bvec->bv_page;
 			char *data = kmap(pg);
 			// TODO: what if more than one page??!
-			memcpy(buf, data, PAGE_SIZE);
+			memcpy(buf, data, SECTOR_SIZE * len);
 			kunmap(pg);
 		}
 
@@ -2011,7 +2015,8 @@ out:
 		bio_put(new_bio);
 	}
 
-	file_lock(dev->sd_cow->filp);
+	if (dev->sd_cow)
+		file_lock(dev->sd_cow->filp);
 
 	return ret;
 }
@@ -2414,48 +2419,50 @@ static int __cow_write_header(struct cow_manager *cm, int is_clean){
 
 static int __cow_open_header(struct cow_manager *cm, int index_only, int reset_vmalloc){
 	int ret;
-	struct cow_header ch;
+	struct cow_header *ch = kmalloc(SECTOR_SIZE, GFP_KERNEL);
 
-	ret = file_read_block(cm->dev, &ch, 0, 1);
+	ret = file_read_block(cm->dev, ch, 0, 1);
 	if(ret) goto error;
 
-	if(ch.magic != COW_MAGIC){
+	if(ch->magic != COW_MAGIC){
 		ret = -EINVAL;
-		LOG_ERROR(-EINVAL, "bad magic number found in cow file: %lu", ((unsigned long)ch.magic));
+		LOG_ERROR(-EINVAL, "bad magic number found in cow file: %lu", ((unsigned long)ch->magic));
 		goto error;
 	}
 
-	if(!(ch.flags & (1 << COW_CLEAN))){
+	if(!(ch->flags & (1 << COW_CLEAN))){
 		ret = -EINVAL;
-		LOG_ERROR(-EINVAL, "cow file not left in clean state: %lu", ((unsigned long)ch.flags));
+		LOG_ERROR(-EINVAL, "cow file not left in clean state: %lu", ((unsigned long)ch->flags));
 		goto error;
 	}
 
-	if(((ch.flags & (1 << COW_INDEX_ONLY)) && !index_only) || (!(ch.flags & (1 << COW_INDEX_ONLY)) && index_only)){
+	if(((ch->flags & (1 << COW_INDEX_ONLY)) && !index_only) || (!(ch->flags & (1 << COW_INDEX_ONLY)) && index_only)){
 		ret = -EINVAL;
-		LOG_ERROR(-EINVAL, "cow file not left in %s state: %lu", ((index_only)? "index only" : "data tracking"), (unsigned long)ch.flags);
+		LOG_ERROR(-EINVAL, "cow file not left in %s state: %lu", ((index_only)? "index only" : "data tracking"), (unsigned long)ch->flags);
 		goto error;
 	}
 
-	LOG_DEBUG("cow header opened with file pos = %llu, seqid = %llu", ((unsigned long long)ch.fpos), (unsigned long long)ch.seqid);
+	LOG_DEBUG("cow header opened with file pos = %llu, seqid = %llu", ((unsigned long long)ch->fpos), (unsigned long long)ch->seqid);
 
-	if(reset_vmalloc) cm->flags = ch.flags & ~(1 << COW_VMALLOC_UPPER);
-	else cm->flags = ch.flags;
+	if(reset_vmalloc) cm->flags = ch->flags & ~(1 << COW_VMALLOC_UPPER);
+	else cm->flags = ch->flags;
 
-	cm->curr_pos = ch.fpos;
-	cm->file_max = ch.fsize;
-	cm->seqid = ch.seqid;
-	memcpy(cm->uuid, ch.uuid, COW_UUID_SIZE);
-	cm->version = ch.version;
-	cm->nr_changed_blocks = ch.nr_changed_blocks;
+	cm->curr_pos = ch->fpos;
+	cm->file_max = ch->fsize;
+	cm->seqid = ch->seqid;
+	memcpy(cm->uuid, ch->uuid, COW_UUID_SIZE);
+	cm->version = ch->version;
+	cm->nr_changed_blocks = ch->nr_changed_blocks;
 
 	ret = __cow_write_header_dirty(cm);
 	if(ret) goto error;
 
+	kfree(ch);
 	return 0;
 
 error:
 	LOG_ERROR(ret, "error opening cow manager header");
+	kfree(ch);
 	return ret;
 }
 
@@ -2646,7 +2653,8 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 	if (fiemap) {
 		fiemap_info.fi_flags = FIEMAP_FLAG_SYNC;
 		fiemap_info.fi_extents_mapped = 0;
-		fiemap_info.fi_extents_max = do_div(cow_ext_buf_size, sizeof(struct fiemap_extent));
+		do_div(cow_ext_buf_size, sizeof(struct fiemap_extent));
+		fiemap_info.fi_extents_max = cow_ext_buf_size;
 		fiemap_info.fi_extents_start = (struct fiemap_extent __user *)cow_ext_buf;
 
 		ret = fiemap(filp->f_inode, &fiemap_info, 0, FIEMAP_MAX_OFFSET);
@@ -2676,8 +2684,8 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 	}
 
 out:
-	__free_page(pg);
-	// yes, this is commented. TODO: explain why
+	// yes, these are commented. TODO: explain why
+	/* __free_page(pg); */
 	/* vm_area_free(vma); */
 	elastio_snap_mm_unlock(task->mm);
 
@@ -2690,6 +2698,8 @@ static int cow_reopen(struct cow_manager *cm, const char *pathname){
 	LOG_DEBUG("reopening cow file");
 	ret = file_open(pathname, 0, &cm->filp);
 	if(ret) goto error;
+
+	cm->dev->sd_cow_inode = cm->filp->f_inode;
 
 	ret = elastio_snap_get_cow_file_extents(cm->dev, cm->filp);
 	if (ret) goto error;
@@ -2736,6 +2746,8 @@ static int cow_reload(struct snap_device *dev, const char *path, uint64_t elemen
 	cm->total_sects = NUM_SEGMENTS(elements, cm->log_sect_pages + PAGE_SHIFT - 3);
 	cm->allowed_sects = __cow_calculate_allowed_sects(cache_size, cm->total_sects);
 	cm->data_offset = COW_HEADER_SIZE + (cm->total_sects * (sect_size*8));
+	dev->sd_cow_inode = cm->filp->f_inode;
+	cm->dev = dev;
 
 	ret = elastio_snap_get_cow_file_extents(dev, cm->filp);
 	if (ret) goto error;
