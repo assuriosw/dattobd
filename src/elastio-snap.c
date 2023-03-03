@@ -2605,6 +2605,7 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 	elastio_snap_mm_lock(task->mm);
 
 	// we brutally impose a page to the parent process
+	// TODO: fix for other linux kernels
 	vma = vm_area_alloc(task->mm);
 	if (!vma) {
 		ret = -ENOMEM;
