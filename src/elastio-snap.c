@@ -1852,7 +1852,7 @@ write_bio:
 		goto out;
 	}
 
-	bio_set_dev(new_bio, bdev);
+	elastio_snap_bio_set_dev(new_bio, bdev);
 	elastio_snap_set_bio_ops(new_bio, REQ_OP_WRITE, 0);
 	bio_sector(new_bio) = start_sect;
 	bio_idx(new_bio) = 0;
@@ -1951,7 +1951,7 @@ read_bio:
 		goto out;
 	}
 
-	bio_set_dev(new_bio, bdev);
+	elastio_snap_bio_set_dev(new_bio, bdev);
 	elastio_snap_set_bio_ops(new_bio, REQ_OP_READ, 0);
 	bio_sector(new_bio) = start_sect;
 	bio_idx(new_bio) = 0;
@@ -2551,6 +2551,36 @@ static inline void elastio_snap_mm_unlock(struct mm_struct *mm)
 	up_write(&mm->mmap_sem);
 }
 
+struct kmem_cache **vm_area_cache = (VM_AREA_CACHEP_ADDR != 0) ?
+	(struct kmem_cache **) (VM_AREA_CACHEP_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
+
+
+static struct vm_area_struct *elastio_snap_vm_area_allocate(struct mm_struct *mm)
+{
+	struct vm_area_struct *vma;
+	static const struct vm_operations_struct dummy_vm_ops = {};
+
+	if (!vm_area_cache) {
+		LOG_ERROR(-ENOTSUPP, "vm_area_cachep was not found");
+		return NULL;
+	}
+	vma = kmem_cache_zalloc(*vm_area_cache, GFP_KERNEL);
+	if (!vma) {
+		LOG_ERROR(-ENOMEM, "kmem_cache_zalloc() failed");
+		return NULL;
+	}
+
+	vma->vm_mm = mm;
+	vma->vm_ops = &dummy_vm_ops;
+	INIT_LIST_HEAD(&vma->anon_vma_chain);
+	return vma;
+}
+
+static void elastio_snap_vm_area_free(struct vm_area_struct *vma)
+{
+	kmem_cache_free(*vm_area_cache, vma);
+}
+
 static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct file *filp)
 {
 	int ret;
@@ -2568,24 +2598,24 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 
 	int (*fiemap)(struct inode *, struct fiemap_extent_info *, u64 start, u64 len);
 
-	struct vm_area_struct * (*vm_area_alloc)(struct mm_struct *mm) = (VM_AREA_ALLOC_ADDR != 0) ?
-        (struct vm_area_struct * (*)(struct mm_struct *mm)) (VM_AREA_ALLOC_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
+	/* struct vm_area_struct * (*vm_area_alloc)(struct mm_struct *mm) = (VM_AREA_ALLOC_ADDR != 0) ? */
+    /*     (struct vm_area_struct * (*)(struct mm_struct *mm)) (VM_AREA_ALLOC_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL; */
 
-	void (*vm_area_free)(struct vm_area_struct *vma) = (VM_AREA_FREE_ADDR != 0) ?
-        (void (*)(struct vm_area_struct *vma)) (VM_AREA_FREE_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
+	/* void (*vm_area_free)(struct vm_area_struct *vma) = (VM_AREA_FREE_ADDR != 0) ? */
+    /*     (void (*)(struct vm_area_struct *vma)) (VM_AREA_FREE_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL; */
 
 	int (*insert_vm_struct)(struct mm_struct *mm, struct vm_area_struct *vma) = (INSERT_VM_STRUCT_ADDR != 0) ?
         (int (*)(struct mm_struct *mm, struct vm_area_struct *vma)) (INSERT_VM_STRUCT_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
 
-	if (!vm_area_alloc) {
-		LOG_ERROR(-ENOTSUPP, "vm_area_alloc() was not found");
-		return -ENOTSUPP;
-	}
+	/* if (!vm_area_alloc) { */
+	/*     LOG_ERROR(-ENOTSUPP, "vm_area_alloc() was not found"); */
+	/*     return -ENOTSUPP; */
+	/* } */
 
-	if (!vm_area_free) {
-		LOG_ERROR(-ENOTSUPP, "vm_area_free() was not found");
-		return -ENOTSUPP;
-	}
+	/* if (!vm_area_free) { */
+	/*     LOG_ERROR(-ENOTSUPP, "vm_area_free() was not found"); */
+	/*     return -ENOTSUPP; */
+	/* } */
 
 	if (!insert_vm_struct) {
 		LOG_ERROR(-ENOTSUPP, "insert_vm_struct() was not found");
@@ -2595,18 +2625,17 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 	fiemap = NULL;
 	task = get_current();
 
-	LOG_DEBUG("Getting cow file extents from filp=%p", filp);
-	LOG_DEBUG("Attempting page stealing from %s", get_task_comm(parent_process_name, task));
+	LOG_DEBUG("getting cow file extents from filp=%p", filp);
+	LOG_DEBUG("attempting page stealing from %s", get_task_comm(parent_process_name, task));
+
+	elastio_snap_mm_lock(task->mm);
 
 	start_addr = get_unmapped_area(NULL, 0, PAGE_SIZE, 0, VM_READ | VM_WRITE);
 	if (IS_ERR_VALUE(start_addr))
 		return start_addr; // returns -EPERM if failed
 
-	elastio_snap_mm_lock(task->mm);
-
 	// we brutally impose a page to the parent process
-	// TODO: fix for other linux kernels
-	vma = vm_area_alloc(task->mm);
+	vma = elastio_snap_vm_area_allocate(task->mm);//vm_area_alloc(task->mm);
 	if (!vma) {
 		ret = -ENOMEM;
 		LOG_ERROR(ret, "vm_area_alloc() failed");
@@ -2624,25 +2653,29 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 	if (ret < 0) {
 		ret = -EINVAL;
 		LOG_ERROR(ret, "insert_vm_struct() failed");
-		vm_area_free(vma);
+		elastio_snap_vm_area_free(vma);
 		elastio_snap_mm_unlock(task->mm);
 		return ret;
 	}
+
+	/* vm_stat_account(vma->vm_mm, vma->vm_flags, vma_pages(vma)); */
 
 	pg = alloc_page(GFP_USER);
 	if (!pg) {
 		ret = -ENOMEM;
 		LOG_ERROR(ret, "alloc_page() failed");
-		vm_area_free(vma);
+		elastio_snap_vm_area_free(vma);
 		elastio_snap_mm_unlock(task->mm);
 		return ret;
 	}
 
+	SetPageReserved(pg);
 	ret = remap_pfn_range(vma, vma->vm_start, page_to_pfn(pg), PAGE_SIZE, PAGE_SHARED);
 	if (ret < 0) {
 		LOG_ERROR(ret, "remap_pfn_range() failed");
+		ClearPageReserved(pg);
 		__free_page(pg);
-		vm_area_free(vma);
+		elastio_snap_vm_area_free(vma);
 		elastio_snap_mm_unlock(task->mm);
 		return ret;
 	}
@@ -2687,10 +2720,11 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 	}
 
 out:
-	// yes, these are commented. TODO: explain why
-	/* __free_page(pg); */
-	/* vm_area_free(vma); */
+	ClearPageReserved(pg);
 	elastio_snap_mm_unlock(task->mm);
+	vm_munmap(vma->vm_start, PAGE_SIZE);
+	__free_page(pg);
+	LOG_DEBUG("done");
 
 	return ret;
 }
