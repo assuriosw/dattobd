@@ -2693,7 +2693,7 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 		fiemap_info.fi_extents_max = cow_ext_buf_size;
 		fiemap_info.fi_extents_start = (struct fiemap_extent __user *)cow_ext_buf;
 
-		ret = fiemap(filp->f_inode, &fiemap_info, 0, FIEMAP_MAX_OFFSET);
+		ret = fiemap(filp->f_inode, &fiemap_info, 0, INT_MAX);
 
 		LOG_DEBUG("fiemap for cow file (ret %d), extents %u (max %u)", ret,
 				fiemap_info.fi_extents_mapped, fiemap_info.fi_extents_max);
