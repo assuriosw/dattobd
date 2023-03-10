@@ -1844,7 +1844,6 @@ int file_write_block(struct snap_device *dev, void *block, size_t offset, size_t
 write_bio:
 	start_sect = sector_by_offset(dev, offset);
 
-//	new_bio = bio_alloc_bioset(GFP_NOIO, 1, bs);
 	new_bio = bio_alloc(GFP_NOIO, 1);
 	if(!new_bio){
 		ret = -ENOMEM;
@@ -1943,7 +1942,6 @@ int file_read_block(struct snap_device *dev, void *buf, size_t offset, size_t le
 read_bio:
 	start_sect = sector_by_offset(dev, offset);
 
-	//new_bio = bio_alloc_bioset(GFP_NOIO, 1, bs);
 	new_bio = bio_alloc(GFP_NOIO, 1);
 	if(!new_bio){
 		ret = -ENOMEM;
@@ -3045,7 +3043,6 @@ static int cow_read_data(struct cow_manager *cm, void *buf, uint64_t block_pos, 
 
 	if(block_off >= COW_BLOCK_SIZE) return -EINVAL;
 
-	/* LOG_DEBUG("read offset=%d, len=%d", (block_pos * COW_BLOCK_SIZE) + block_off, len); */
 	ret = file_read_block(cm->dev, _buf, (block_pos * COW_BLOCK_SIZE), SECTORS_PER_BLOCK);
 	if(ret){
 		LOG_ERROR(ret, "error reading cow data");
@@ -3757,6 +3754,8 @@ static int snap_cow_thread(void *data){
 		}
 	}
 
+	LOG_DEBUG(">> snap_cow_thread() done.");
+
 	return 0;
 }
 
@@ -3802,6 +3801,7 @@ static int inc_sset_thread(void *data){
 		kfree(sset);
 	}
 
+	LOG_DEBUG(">> inc_sset_thread() done.");
 	return 0;
 }
 
@@ -4515,9 +4515,6 @@ static void __tracer_copy_base_dev(const struct snap_device *src, struct snap_de
 static int __tracer_destroy_cow(struct snap_device *dev, int close_method){
 	int ret = 0;
 
-	dev->sd_falloc_size = 0;
-	dev->sd_cache_size = 0;
-
 	if(dev->sd_cow){
 		LOG_DEBUG("destroying cow manager. close method: %d", close_method);
 
@@ -4537,6 +4534,9 @@ static int __tracer_destroy_cow(struct snap_device *dev, int close_method){
 		kfree(dev->sd_cow_extents);
 		dev->sd_cow_extents = NULL;
 	}
+
+	dev->sd_falloc_size = 0;
+	dev->sd_cache_size = 0;
 	dev->sd_cow_ext_cnt = 0;
 	dev->sd_cow_inode = NULL;
 
@@ -4638,6 +4638,11 @@ error:
 
 static void __tracer_copy_cow(const struct snap_device *src, struct snap_device *dest){
 	dest->sd_cow = src->sd_cow;
+	// copy cow file extents and update the device
+	dest->sd_cow_extents = src->sd_cow_extents;
+	dest->sd_cow_ext_cnt = src->sd_cow_ext_cnt;
+	dest->sd_cow->dev = dest;
+
 	dest->sd_cow_inode = src->sd_cow_inode;
 	dest->sd_cache_size = src->sd_cache_size;
 	dest->sd_falloc_size = src->sd_falloc_size;
