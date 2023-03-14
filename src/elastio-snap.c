@@ -1813,7 +1813,7 @@ sector_t sector_by_offset(struct snap_device *dev, size_t offset)
 	for (i = 0; i < dev->sd_cow_ext_cnt; i++) {
 		// TODO: double check if offset should be strictly less that fe_logical or not
 		if (offset >= extent[i].fe_logical && offset < extent[i].fe_logical + extent[i].fe_length)
-			return (extent[i].fe_physical + offset) >> 9;
+			return (extent[i].fe_physical + (offset - extent[i].fe_logical)) >> 9;
 	}
 
 	return SECTOR_INVALID;
