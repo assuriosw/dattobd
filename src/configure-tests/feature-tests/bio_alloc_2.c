@@ -10,7 +10,7 @@
 MODULE_LICENSE("GPL");
 
 static inline void dummy(void){
-	struct bio *bio;
+	struct bio *new_bio;
 
 	new_bio = bio_alloc(GFP_KERNEL, 1);
 }
