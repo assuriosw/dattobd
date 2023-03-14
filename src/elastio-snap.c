@@ -1889,7 +1889,7 @@ write_bio:
 
 	pg->mapping = dev->sd_cow_inode->i_mapping;
 
-	ret = submit_bio_wait(new_bio);
+	ret = elastio_snap_submit_bio_wait(new_bio);
 	if (ret) {
 		LOG_ERROR(ret, "submit_bio_wait() error!");
 		goto out;
@@ -1986,7 +1986,7 @@ read_bio:
 
 	pg->mapping = dev->sd_cow_inode->i_mapping;
 
-	ret = submit_bio_wait(new_bio);
+	ret = elastio_snap_submit_bio_wait(new_bio);
 	if (ret) {
 		LOG_ERROR(ret, "submit_bio_wait() error!");
 		goto out;
