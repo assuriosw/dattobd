@@ -1844,7 +1844,11 @@ int file_write_block(struct snap_device *dev, void *block, size_t offset, size_t
 write_bio:
 	start_sect = sector_by_offset(dev, offset);
 
+#ifdef HAVE_BIO_ALLOC_2
 	new_bio = bio_alloc(GFP_NOIO, 1);
+#else
+	new_bio = bio_alloc(bdev, 1, 0, GFP_KERNEL);
+#endif
 	if(!new_bio){
 		ret = -ENOMEM;
 		LOG_ERROR(ret, "error allocating bio (write) - bs = %p", bs);
@@ -1942,7 +1946,11 @@ int file_read_block(struct snap_device *dev, void *buf, size_t offset, size_t le
 read_bio:
 	start_sect = sector_by_offset(dev, offset);
 
+#ifdef HAVE_BIO_ALLOC_2
 	new_bio = bio_alloc(GFP_NOIO, 1);
+#else
+	new_bio = bio_alloc(bdev, 1, 0, GFP_KERNEL);
+#endif
 	if(!new_bio){
 		ret = -ENOMEM;
 		LOG_ERROR(ret, "error allocating bio (read) - bs = %p", bs);
@@ -2555,14 +2563,12 @@ error:
 
 static inline void elastio_snap_mm_lock(struct mm_struct *mm)
 {
-	// TODO: fix for other kernel versions
-	down_write(&mm->mmap_sem);
+	mmap_write_lock(mm);
 }
 
 static inline void elastio_snap_mm_unlock(struct mm_struct *mm)
 {
-	// TODO: fix for other kernel versions
-	up_write(&mm->mmap_sem);
+	mmap_write_unlock(mm);
 }
 
 struct kmem_cache **vm_area_cache = (VM_AREA_CACHEP_ADDR != 0) ?
