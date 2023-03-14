@@ -2296,13 +2296,21 @@ static int __cow_alloc_section(struct cow_manager *cm, unsigned long sect_idx, i
 }
 
 static int __cow_load_section(struct cow_manager *cm, unsigned long sect_idx){
-	int ret;
+	int i, ret;
 
-	ret = __cow_alloc_section(cm, sect_idx, 0);
+	ret = __cow_alloc_section(cm, sect_idx, 1);
 	if(ret) goto error;
 
-	ret = file_read_block(cm->dev, cm->sects[sect_idx].mappings, cm->sect_size*sect_idx*8 + COW_HEADER_SIZE, SECTORS_PER_BLOCK);
-	if(ret) goto error;
+	// SECTORS_PER_BLOCK contains 512 mappings (4096 bytes / 8 bytes)
+	// sect_size is 32768 bytes containing 4096 mappings (32768 bytes / 8 bytes)
+	// hence we need to read it 8 times with a shift of 512 mappings on each iteration
+	for (i = 0; i < 8; i++) {
+		int mapping_offset = (COW_BLOCK_SIZE / sizeof(cm->sects[sect_idx].mappings[0])) * i;
+		int cow_file_offset = COW_BLOCK_SIZE * i;
+
+		ret = file_read_block(cm->dev, cm->sects[sect_idx].mappings + mapping_offset, COW_HEADER_SIZE + cm->sect_size*sect_idx*8 + cow_file_offset, SECTORS_PER_BLOCK);
+		if(ret) goto error;
+	}
 
 	return 0;
 
@@ -2313,12 +2321,20 @@ error:
 }
 
 static int __cow_write_section(struct cow_manager *cm, unsigned long sect_idx){
-	int ret;
+	int i, ret;
 
-	ret = file_write_block(cm->dev, cm->sects[sect_idx].mappings, cm->sect_size*sect_idx*8 + COW_HEADER_SIZE, SECTORS_PER_BLOCK);
-	if(ret){
-		LOG_ERROR(ret, "error writing cow manager section to file");
-		return ret;
+	// SECTORS_PER_BLOCK contains 512 mappings (4096 bytes / 8 bytes)
+	// sect_size is 32768 bytes containing 4096 mappings (32768 bytes / 8 bytes)
+	// hence we need to write it 8 times with a shift of 512 mappings on each iteration
+	for (i = 0; i < 8; i++) {
+		int mapping_offset = (COW_BLOCK_SIZE / sizeof(cm->sects[sect_idx].mappings[0])) * i;
+		int cow_file_offset = COW_BLOCK_SIZE * i;
+
+		ret = file_write_block(cm->dev, cm->sects[sect_idx].mappings + mapping_offset, COW_HEADER_SIZE + cm->sect_size*sect_idx*8 + cow_file_offset, SECTORS_PER_BLOCK);
+		if(ret){
+			LOG_ERROR(ret, "error writing cow manager section to file");
+			return ret;
+		}
 	}
 
 	return 0;
@@ -2760,7 +2776,6 @@ static unsigned long __cow_calculate_allowed_sects(unsigned long cache_size, uns
 
 static int cow_reload(struct snap_device *dev, const char *path, uint64_t elements, unsigned long sect_size, unsigned long cache_size, int index_only, struct cow_manager **cm_out){
 	int ret;
-	unsigned long i;
 	struct cow_manager *cm;
 
 	LOG_DEBUG("allocating cow manager");
@@ -2801,10 +2816,6 @@ static int cow_reload(struct snap_device *dev, const char *path, uint64_t elemen
 			LOG_ERROR(ret, "error allocating cow manager sects array");
 			goto error;
 		}
-	}
-
-	for(i=0; i<cm->total_sects; i++){
-		cm->sects[i].has_data = 1;
 	}
 
 	*cm_out = cm;
@@ -3037,21 +3048,21 @@ error:
 	return ret;
 }
 
-static int cow_read_data(struct cow_manager *cm, void *buf, uint64_t block_pos, unsigned long block_off, unsigned long len){
+static int cow_read_data(struct cow_manager *cm, void *out_buf, uint64_t block_pos, unsigned long block_off, unsigned long len){
 	int ret;
-	char *_buf = kmalloc(COW_BLOCK_SIZE, GFP_KERNEL);
+	char *read_buf = kzalloc(COW_BLOCK_SIZE, GFP_KERNEL);
 
 	if(block_off >= COW_BLOCK_SIZE) return -EINVAL;
 
-	ret = file_read_block(cm->dev, _buf, (block_pos * COW_BLOCK_SIZE), SECTORS_PER_BLOCK);
+	ret = file_read_block(cm->dev, read_buf, (block_pos * COW_BLOCK_SIZE), SECTORS_PER_BLOCK);
 	if(ret){
 		LOG_ERROR(ret, "error reading cow data");
-		kfree(_buf);
+		kfree(read_buf);
 		return ret;
 	}
 
-	memcpy(buf, _buf + block_off, len);
-	kfree(_buf);
+	memcpy(out_buf, read_buf + block_off, len);
+	kfree(read_buf);
 
 	return 0;
 }
@@ -3754,7 +3765,7 @@ static int snap_cow_thread(void *data){
 		}
 	}
 
-	LOG_DEBUG(">> snap_cow_thread() done.");
+	LOG_DEBUG("snap_cow_thread() done.");
 
 	return 0;
 }
@@ -3801,7 +3812,7 @@ static int inc_sset_thread(void *data){
 		kfree(sset);
 	}
 
-	LOG_DEBUG(">> inc_sset_thread() done.");
+	LOG_DEBUG("inc_sset_thread() done.");
 	return 0;
 }
 

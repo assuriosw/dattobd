@@ -29,7 +29,8 @@ class TestSnapshot(DeviceTestCase):
         snapfile = "{}/testfile".format(self.snap_mount)
 
         with open(testfile, "w") as f:
-            f.write("The quick brown fox")
+            for i in range(0, 200000):
+                f.write("The quick brown fox")
 
         self.addCleanup(os.remove, testfile)
         os.sync()
@@ -39,7 +40,8 @@ class TestSnapshot(DeviceTestCase):
         self.addCleanup(elastio_snap.destroy, self.minor)
 
         with open(testfile, "w") as f:
-            f.write("jumps over the lazy dog")
+            for i in range(0, 200000):
+                f.write("jumps over the lazy dog")
 
         os.sync()
         # TODO: norecovery option, probably, should not be here after the fix of the elastio/elastio-snap#63
