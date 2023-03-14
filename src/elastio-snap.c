@@ -2563,12 +2563,20 @@ error:
 
 static inline void elastio_snap_mm_lock(struct mm_struct *mm)
 {
+#ifdef HAVE_MMAP_WRITE_LOCK
 	mmap_write_lock(mm);
+#else
+	down_write(&mm->mmap_sem);
+#endif
 }
 
 static inline void elastio_snap_mm_unlock(struct mm_struct *mm)
 {
+#ifdef HAVE_MMAP_WRITE_LOCK
 	mmap_write_unlock(mm);
+#else
+	up_write(&mm->mmap_sem);
+#endif
 }
 
 struct kmem_cache **vm_area_cache = (VM_AREA_CACHEP_ADDR != 0) ?
