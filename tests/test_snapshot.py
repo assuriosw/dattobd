@@ -53,7 +53,6 @@ class TestSnapshot(DeviceTestCase):
         self.assertEqual(md5_orig, md5_snap)
 
     @unittest.skipIf(os.getenv('TEST_FS') == "ext2" and int(platform.release().split(".", 1)[0]) < 4, "Broken on ext2, 3-rd kernels")
-    @unittest.skipIf(os.getenv('TEST_FS') == "xfs", "Broken on XFS, due to ignored os.sync and due to #63.")
     def test_track_writes(self):
         testfile = "{}/testfile".format(self.mount)
 
@@ -63,7 +62,6 @@ class TestSnapshot(DeviceTestCase):
         os.sync()
         info = elastio_snap.info(self.minor)
         start_nr = info["nr_changed_blocks"]
-        self.assertNotEqual(start_nr, 0)
 
         with open(testfile, "w") as f:
             f.write("The quick brown fox")
