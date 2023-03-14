@@ -2166,8 +2166,6 @@ static int file_allocate(struct snap_device *dev, struct file *f, uint64_t offse
 	if(ret && ret != -EOPNOTSUPP) goto error;
 	else if(!ret) goto out;
 
-	file_lock(f);
-
 	//fallocate isn't supported, fall back on writing zeros
 	if(!abs_path) {
 		LOG_WARN("fallocate is not supported for this file system, falling back on writing zeros");
@@ -2201,6 +2199,8 @@ static int file_allocate(struct snap_device *dev, struct file *f, uint64_t offse
 	}
 
 out:
+	file_lock(f);
+
 	if(page_buf) free_page((unsigned long)page_buf);
 	if(abs_path) kfree(abs_path);
 
