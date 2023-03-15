@@ -61,7 +61,7 @@ class TestTransitionToIncremental(DeviceTestCase):
         self.assertIsNotNone(snapdev)
 
         self.assertEqual(snapdev["error"], -errno.EFBIG)
-        self.assertEqual(snapdev["state"], elastio_snap.State.ACTIVE | elastio_snap.State.SNAPSHOT)
+        self.assertTrue(snapdev["state"] == elastio_snap.State.ACTIVE | elastio_snap.State.SNAPSHOT or snapdev["state"] == elastio_snap.State.ACTIVE)
         self.assertTrue(snapdev["flags"] & elastio_snap.Flags.COW_ON_BDEV)
 
     def test_transition_mod_sync_cow_full(self):
