@@ -1840,7 +1840,7 @@ int file_write_block(struct snap_device *dev, void *block, size_t offset, size_t
 	bdev = dev->sd_base_dev;
 	sectors_processed = 0;
 
-	WARN_ON(!IS_ALIGNED(offset, PAGE_SIZE) || len > SECTORS_PER_BLOCK);
+	WARN_ON(len > SECTORS_PER_BLOCK);
 
 	if (dev->sd_cow)
 		file_unlock(dev->sd_cow->filp);
@@ -1942,7 +1942,7 @@ int file_read_block(struct snap_device *dev, void *buf, size_t offset, size_t le
 	bdev = dev->sd_base_dev;
 	sectors_processed = 0;
 
-	WARN_ON(!IS_ALIGNED(offset, PAGE_SIZE) || len > SECTORS_PER_BLOCK);
+	WARN_ON(len > SECTORS_PER_BLOCK);
 
 	if (dev->sd_cow)
 		file_unlock(dev->sd_cow->filp);
