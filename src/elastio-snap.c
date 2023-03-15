@@ -968,6 +968,7 @@ static void bio_free_pages(struct bio *bio){
 
 //global module parameters
 static int elastio_snap_may_hook_syscalls = 1;
+static unsigned long elastio_snap_cow_ext_buf_size = 10 * PAGE_SIZE;
 static unsigned long elastio_snap_cow_max_memory_default = (300 * 1024 * 1024);
 static unsigned int elastio_snap_cow_fallocate_percentage_default = 10;
 static unsigned int elastio_snap_max_snap_devices = ELASTIO_SNAP_DEFAULT_SNAP_DEVICES;
@@ -975,6 +976,9 @@ static int elastio_snap_debug = 0;
 
 module_param_named(may_hook_syscalls, elastio_snap_may_hook_syscalls, int, S_IRUGO);
 MODULE_PARM_DESC(may_hook_syscalls, "if true, allows the kernel module to find and alter the system call table to allow tracing to work across remounts");
+
+module_param_named(cow_ext_buf_size, elastio_snap_cow_ext_buf_size, ulong, 0);
+MODULE_PARM_DESC(cow_ext_buf_size, "length of the cow file extension buffer (in bytes)");
 
 module_param_named(cow_max_memory_default, elastio_snap_cow_max_memory_default, ulong, 0);
 MODULE_PARM_DESC(cow_max_memory_default, "default maximum cache size (in bytes)");
@@ -2622,28 +2626,14 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 	struct vm_area_struct *vma;
 	struct page *pg;
 	__user uint8_t *cow_ext_buf;
-	size_t cow_ext_buf_size;
+
+	// we save it to fix its value till the end of the function
+	unsigned long cow_ext_buf_size = ALIGN(elastio_snap_cow_ext_buf_size, PAGE_SIZE);
 
 	int (*fiemap)(struct inode *, struct fiemap_extent_info *, u64 start, u64 len);
 
-	/* struct vm_area_struct * (*vm_area_alloc)(struct mm_struct *mm) = (VM_AREA_ALLOC_ADDR != 0) ? */
-    /*     (struct vm_area_struct * (*)(struct mm_struct *mm)) (VM_AREA_ALLOC_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL; */
-
-	/* void (*vm_area_free)(struct vm_area_struct *vma) = (VM_AREA_FREE_ADDR != 0) ? */
-    /*     (void (*)(struct vm_area_struct *vma)) (VM_AREA_FREE_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL; */
-
 	int (*insert_vm_struct)(struct mm_struct *mm, struct vm_area_struct *vma) = (INSERT_VM_STRUCT_ADDR != 0) ?
         (int (*)(struct mm_struct *mm, struct vm_area_struct *vma)) (INSERT_VM_STRUCT_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
-
-	/* if (!vm_area_alloc) { */
-	/*     LOG_ERROR(-ENOTSUPP, "vm_area_alloc() was not found"); */
-	/*     return -ENOTSUPP; */
-	/* } */
-
-	/* if (!vm_area_free) { */
-	/*     LOG_ERROR(-ENOTSUPP, "vm_area_free() was not found"); */
-	/*     return -ENOTSUPP; */
-	/* } */
 
 	if (!insert_vm_struct) {
 		LOG_ERROR(-ENOTSUPP, "insert_vm_struct() was not found");
@@ -2658,12 +2648,13 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 
 	elastio_snap_mm_lock(task->mm);
 
-	start_addr = get_unmapped_area(NULL, 0, PAGE_SIZE, 0, VM_READ | VM_WRITE);
+	start_addr = get_unmapped_area(NULL, 0, cow_ext_buf_size, 0, VM_READ | VM_WRITE);
 	if (IS_ERR_VALUE(start_addr))
 		return start_addr; // returns -EPERM if failed
 
-	// we brutally impose a page to the parent process
-	vma = elastio_snap_vm_area_allocate(task->mm);//vm_area_alloc(task->mm);
+	// we must give fiemap() a userspace buffer, so we
+	// brutally impose pages to the parent process
+	vma = elastio_snap_vm_area_allocate(task->mm);
 	if (!vma) {
 		ret = -ENOMEM;
 		LOG_ERROR(ret, "vm_area_alloc() failed");
@@ -2672,7 +2663,7 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 	}
 
 	vma->vm_start = start_addr;
-	vma->vm_end = start_addr + PAGE_SIZE;
+	vma->vm_end = start_addr + cow_ext_buf_size;
 	vma->vm_flags = vm_flags;
 	vma->vm_page_prot = vm_get_page_prot(vm_flags);
 	vma->vm_pgoff = 0;
@@ -2686,9 +2677,7 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 		return ret;
 	}
 
-	/* vm_stat_account(vma->vm_mm, vma->vm_flags, vma_pages(vma)); */
-
-	pg = alloc_page(GFP_USER);
+	pg = alloc_pages(GFP_USER, get_order(cow_ext_buf_size));
 	if (!pg) {
 		ret = -ENOMEM;
 		LOG_ERROR(ret, "alloc_page() failed");
@@ -2698,27 +2687,27 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 	}
 
 	SetPageReserved(pg);
-	ret = remap_pfn_range(vma, vma->vm_start, page_to_pfn(pg), PAGE_SIZE, PAGE_SHARED);
+	ret = remap_pfn_range(vma, vma->vm_start, page_to_pfn(pg), cow_ext_buf_size, PAGE_SHARED);
 	if (ret < 0) {
 		LOG_ERROR(ret, "remap_pfn_range() failed");
 		ClearPageReserved(pg);
-		__free_page(pg);
+		__free_pages(pg, get_order(cow_ext_buf_size));
 		elastio_snap_vm_area_free(vma);
 		elastio_snap_mm_unlock(task->mm);
 		return ret;
 	}
 
 	cow_ext_buf = (__user uint8_t *) start_addr;
-	cow_ext_buf_size = PAGE_SIZE;
 
 	if (filp->f_inode->i_op)
 		fiemap = filp->f_inode->i_op->fiemap;
 
 	if (fiemap) {
+		int max_num_extents = cow_ext_buf_size; // used for do_div() as it overwrites the first argument
 		fiemap_info.fi_flags = FIEMAP_FLAG_SYNC;
 		fiemap_info.fi_extents_mapped = 0;
-		do_div(cow_ext_buf_size, sizeof(struct fiemap_extent));
-		fiemap_info.fi_extents_max = cow_ext_buf_size;
+		do_div(max_num_extents, sizeof(struct fiemap_extent));
+		fiemap_info.fi_extents_max = max_num_extents;
 		fiemap_info.fi_extents_start = (struct fiemap_extent __user *)cow_ext_buf;
 
 		ret = fiemap(filp->f_inode, &fiemap_info, 0, INT_MAX);
@@ -2734,6 +2723,7 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 				ret = copy_from_user(dev->sd_cow_extents, cow_ext_buf, fiemap_mapped_extents_size);
 				if (!ret) {
 					dev->sd_cow_ext_cnt = fiemap_info.fi_extents_mapped;
+					WARN(dev->sd_cow_ext_cnt == max_num_extents, "max num of extents read, increase cow_ext_buf_size");
 					extent = dev->sd_cow_extents;
 					for (i_ext = 0; i_ext < fiemap_info.fi_extents_mapped; ++i_ext, ++extent) {
 						LOG_DEBUG("   cow file extent: log 0x%llx, phy 0x%llx, len %llu", extent->fe_logical, extent->fe_physical, extent->fe_length);
@@ -2750,10 +2740,8 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 out:
 	ClearPageReserved(pg);
 	elastio_snap_mm_unlock(task->mm);
-	vm_munmap(vma->vm_start, PAGE_SIZE);
-	__free_page(pg);
-	LOG_DEBUG("done");
-
+	vm_munmap(vma->vm_start, cow_ext_buf_size);
+	__free_pages(pg, get_order(cow_ext_buf_size));
 	return ret;
 }
 
