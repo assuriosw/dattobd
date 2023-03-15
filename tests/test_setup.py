@@ -22,6 +22,13 @@ class TestSetup(DeviceTestCase):
         self.cow_full_path = "{}/{}".format(self.mount, self.cow_file)
         self.snap_device = "/dev/elastio-snap{}".format(self.minor)
 
+        with open('/dev/kmsg', 'w') as f:
+            f.write('--- {} started ---'.format(self._testMethodName))
+
+    def tearDown(self):
+        with open('/dev/kmsg', 'w') as f:
+            f.write('--- {} done. ---'.format(self._testMethodName))
+
     def test_setup_invalid_minor(self):
         self.assertEqual(elastio_snap.setup(1000, self.device, self.cow_full_path), errno.EINVAL)
         self.assertFalse(os.path.exists(self.snap_device))

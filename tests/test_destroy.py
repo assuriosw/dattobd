@@ -22,6 +22,13 @@ class TestDestroy(DeviceTestCase):
         self.cow_reload_path = "/{}".format(self.cow_file)
         self.snap_device = "/dev/elastio-snap{}".format(self.minor)
 
+        with open('/dev/kmsg', 'w') as f:
+            f.write('--- {} started ---'.format(self._testMethodName))
+
+    def tearDown(self):
+        with open('/dev/kmsg', 'w') as f:
+            f.write('--- {} done. ---'.format(self._testMethodName))
+
     def test_destroy_nonexistent_device(self):
         self.assertEqual(elastio_snap.destroy(self.minor), errno.ENOENT)
 

@@ -21,6 +21,13 @@ class TestTransitionToIncremental(DeviceTestCase):
         self.cow_file = "cow.snap"
         self.cow_full_path = "{}/{}".format(self.mount, self.cow_file)
 
+        with open('/dev/kmsg', 'w') as f:
+            f.write('--- {} started ---'.format(self._testMethodName))
+
+    def tearDown(self):
+        with open('/dev/kmsg', 'w') as f:
+            f.write('--- {} done. ---'.format(self._testMethodName))
+
     def test_transition_nonexistent_snapshot(self):
         self.assertIsNone(elastio_snap.info(self.minor))
         self.assertEqual(elastio_snap.transition_to_incremental(self.minor), errno.ENOENT)

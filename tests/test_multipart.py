@@ -30,6 +30,12 @@ class TestMultipart(DeviceTestCaseMultipart):
             os.makedirs(self.snap_mounts[i], exist_ok=True)
             self.addCleanup(os.rmdir, self.snap_mounts[i])
 
+        with open('/dev/kmsg', 'w') as f:
+            f.write('--- {} started ---'.format(self._testMethodName))
+
+    def tearDown(self):
+        with open('/dev/kmsg', 'w') as f:
+            f.write('--- {} done. ---'.format(self._testMethodName))
 
     def test_multipart_setup_volumes_same_disk(self):
         # Setup snapshot devices and check them
