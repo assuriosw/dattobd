@@ -968,7 +968,7 @@ static void bio_free_pages(struct bio *bio){
 
 //global module parameters
 static int elastio_snap_may_hook_syscalls = 1;
-static unsigned long elastio_snap_cow_ext_buf_size = 10 * PAGE_SIZE;
+static unsigned long elastio_snap_cow_ext_buf_size = sizeof(struct fiemap_extent) * 512;
 static unsigned long elastio_snap_cow_max_memory_default = (300 * 1024 * 1024);
 static unsigned int elastio_snap_cow_fallocate_percentage_default = 10;
 static unsigned int elastio_snap_max_snap_devices = ELASTIO_SNAP_DEFAULT_SNAP_DEVICES;
