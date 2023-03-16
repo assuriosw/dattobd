@@ -24,12 +24,10 @@ class TestSnapshot(DeviceTestCase):
         self.snap_mount = "/mnt"
         self.snap_device = "/dev/elastio-snap{}".format(self.minor)
 
-        with open('/dev/kmsg', 'w') as f:
-            f.write('--- {} started ---'.format(self._testMethodName))
+        util.test_track(self._testMethodName, started=True)
 
     def tearDown(self):
-        with open('/dev/kmsg', 'w') as f:
-            f.write('--- {} done. ---'.format(self._testMethodName))
+        util.test_track(self._testMethodName, started=False)
 
     def test_modify_origin(self):
         testfile = "{}/testfile".format(self.mount)

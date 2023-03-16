@@ -20,12 +20,11 @@ class TestReload(DeviceTestCase):
         self.cow_full_path = "{}/{}".format(self.mount, self.cow_file)
         self.cow_reload_path = "/{}".format(self.cow_file)
         self.snap_device = "/dev/elastio-snap{}".format(self.minor)
-        with open('/dev/kmsg', 'w') as f:
-            f.write('--- {} started ---'.format(self._testMethodName))
+
+        util.test_track(self._testMethodName, started=True)
 
     def tearDown(self):
-        with open('/dev/kmsg', 'w') as f:
-            f.write('--- {} done. ---'.format(self._testMethodName))
+        util.test_track(self._testMethodName, started=False)
 
     def test_reload_snap_invalid_minor(self):
         self.assertEqual(elastio_snap.reload_snapshot(1000, self.device, self.cow_reload_path), errno.EINVAL)

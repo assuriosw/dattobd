@@ -281,3 +281,10 @@ def disassemble_mirror_raid(raid_device, devices):
     time.sleep(1)
     for device in devices:
         mdadm_zero_superblock(get_last_partition(device))
+
+def test_track(test_name, started):
+    with open('/dev/kmsg', 'w') as f:
+        if (started == True):
+            f.write('--- {} started ---'.format(test_name))
+        else:
+            f.write('--- {} done. ---'.format(test_name))
