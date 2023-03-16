@@ -30,12 +30,13 @@ class TestSnapshot(DeviceTestCase):
         util.test_track(self._testMethodName, started=False)
 
     def test_modify_origin(self):
+        lines_to_write = 200000
         testfile = "{}/testfile".format(self.mount)
         snapfile = "{}/testfile".format(self.snap_mount)
 
         with open(testfile, "w") as f:
-            for i in range(0, 200000):
-                f.write("The quick brown fox")
+            for i in range(0, lines_to_write):
+                f.write("The quick brown fox\n")
 
         self.addCleanup(os.remove, testfile)
         os.sync()
@@ -45,8 +46,8 @@ class TestSnapshot(DeviceTestCase):
         self.addCleanup(elastio_snap.destroy, self.minor)
 
         with open(testfile, "w") as f:
-            for i in range(0, 200000):
-                f.write("jumps over the lazy dog")
+            for i in range(0, lines_to_write):
+                f.write("jumps over the lazy dog\n")
 
         os.sync()
         # TODO: norecovery option, probably, should not be here after the fix of the elastio/elastio-snap#63
