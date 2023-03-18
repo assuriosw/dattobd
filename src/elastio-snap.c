@@ -1843,9 +1843,6 @@ int file_write_block(struct snap_device *dev, void *block, size_t offset, size_t
 
 	WARN_ON(len > SECTORS_PER_BLOCK);
 
-	if (dev->sd_cow)
-		file_unlock(dev->sd_cow->filp);
-
 write_bio:
 	start_sect = sector_by_offset(dev, offset);
 	if (start_sect == SECTOR_INVALID) {
@@ -1923,9 +1920,6 @@ out:
 		bio_put(new_bio);
 	}
 
-	if (dev->sd_cow)
-		file_lock(dev->sd_cow->filp);
-
 	return ret;
 }
 
@@ -1955,9 +1949,6 @@ int file_read_block(struct snap_device *dev, void *buf, size_t offset, size_t le
 	sectors_processed = 0;
 
 	WARN_ON(len > SECTORS_PER_BLOCK);
-
-	if (dev->sd_cow)
-		file_unlock(dev->sd_cow->filp);
 
 read_bio:
 	start_sect = sector_by_offset(dev, offset);
@@ -2047,9 +2038,6 @@ out:
 		bio_free_pages(new_bio);
 		bio_put(new_bio);
 	}
-
-	if (dev->sd_cow)
-		file_lock(dev->sd_cow->filp);
 
 	return ret;
 }
