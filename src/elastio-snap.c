@@ -3010,7 +3010,6 @@ static int __cow_write_data(struct cow_manager *cm, void *buf){
 	char *abs_path = NULL;
 	int abs_path_len;
 	uint64_t curr_size = cm->curr_pos * COW_BLOCK_SIZE;
-	/* LOG_DEBUG("curr_pos=%lld, file_max=%lld", curr_size, cm->file_max); */
 
 	if(curr_size >= cm->file_max){
 		ret = -EFBIG;
