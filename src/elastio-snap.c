@@ -1815,7 +1815,6 @@ sector_t sector_by_offset(struct snap_device *dev, size_t offset)
 	unsigned int i;
 	struct fiemap_extent *extent = dev->sd_cow_extents;
 	for (i = 0; i < dev->sd_cow_ext_cnt; i++) {
-		// TODO: double check if offset should be strictly less that fe_logical or not
 		if (offset >= extent[i].fe_logical && offset < extent[i].fe_logical + extent[i].fe_length)
 			return (extent[i].fe_physical + (offset - extent[i].fe_logical)) >> 9;
 	}
@@ -1834,6 +1833,8 @@ int file_write_block(struct snap_device *dev, void *block, size_t offset, size_t
 	struct block_device *bdev;
 	sector_t start_sect;
 	int sectors_processed;
+	int iterations_done;
+	int bytes_written;
 
 	ret = 0;
 	bs = dev_bioset(dev);
@@ -1847,6 +1848,10 @@ int file_write_block(struct snap_device *dev, void *block, size_t offset, size_t
 
 write_bio:
 	start_sect = sector_by_offset(dev, offset);
+	if (start_sect == SECTOR_INVALID) {
+		LOG_WARN("Possible write IO to the end of file (offset=%lu)", offset);
+		goto out;
+	}
 
 #ifdef HAVE_BIO_ALLOC_2
 	new_bio = bio_alloc(GFP_NOIO, 1);
@@ -1872,19 +1877,23 @@ write_bio:
 	}
 
 	data = kmap(pg);
+	iterations_done = 0;
+	bytes_written = 0;
 
 	do {
-		int write_offset = sectors_processed * SECTOR_SIZE;
-		memcpy(data + write_offset, block + write_offset, SECTOR_SIZE);
+		bytes_written = iterations_done * SECTOR_SIZE;
+		memcpy(data + bytes_written, block + sectors_processed * SECTOR_SIZE, SECTOR_SIZE);
 		offset += SECTOR_SIZE;
 		sectors_processed++;
+		iterations_done++;
 	} while (sectors_processed < len &&
-			sector_by_offset(dev, offset) == start_sect + sectors_processed);
+			sector_by_offset(dev, offset) == start_sect + iterations_done);
 
 	kunmap(pg);
 
-	bytes = bio_add_page(new_bio, pg, PAGE_SIZE, 0);
-	if(bytes != PAGE_SIZE){
+	bytes_written = iterations_done * SECTOR_SIZE;
+	bytes = bio_add_page(new_bio, pg, bytes_written, 0);
+	if(bytes != bytes_written){
 		LOG_DEBUG("bio_add_page() error!");
 		__free_page(pg);
 		ret = -EFAULT;
@@ -1936,6 +1945,9 @@ int file_read_block(struct snap_device *dev, void *buf, size_t offset, size_t le
 	int i = 0;
 #endif
 	int sectors_processed;
+	int iterations_done;
+	int bytes_to_read;
+	int buf_offset;
 
 	ret = 0;
 	bs = dev_bioset(dev);
@@ -1949,6 +1961,10 @@ int file_read_block(struct snap_device *dev, void *buf, size_t offset, size_t le
 
 read_bio:
 	start_sect = sector_by_offset(dev, offset);
+	if (start_sect == SECTOR_INVALID) {
+		LOG_WARN("Possible read IO to the end of file (offset=%lu)", offset);
+		goto out;
+	}
 
 #ifdef HAVE_BIO_ALLOC_2
 	new_bio = bio_alloc(GFP_NOIO, 1);
@@ -1974,14 +1990,20 @@ read_bio:
 		goto out;
 	}
 
+	iterations_done = 0;
+	bytes_to_read = 0;
+	buf_offset = sectors_processed * SECTOR_SIZE;
+
 	do {
 		offset += SECTOR_SIZE;
 		sectors_processed++;
+		iterations_done++;
 	} while (sectors_processed < len &&
-			sector_by_offset(dev, offset) == start_sect + sectors_processed);
+			sector_by_offset(dev, offset) == start_sect + iterations_done);
 
-	bytes = bio_add_page(new_bio, pg, PAGE_SIZE, 0);
-	if(bytes != PAGE_SIZE){
+	bytes_to_read = iterations_done * SECTOR_SIZE;
+	bytes = bio_add_page(new_bio, pg, bytes_to_read, 0);
+	if(bytes != bytes_to_read){
 		LOG_DEBUG("bio_add_page() error!");
 		__free_page(pg);
 		ret = -EFAULT;
@@ -2003,9 +2025,12 @@ read_bio:
 #endif
 			struct page *pg = bvec->bv_page;
 			char *data = kmap(pg);
-			// TODO: what if more than one page??!
-			memcpy(buf, data, SECTOR_SIZE * len);
+			WARN_ON(bytes_to_read != bvec->bv_len);
+			memcpy(buf + buf_offset, data, bytes_to_read);
 			kunmap(pg);
+			// in an impossible case if we have more
+			// than one page (should never happen)
+			break;
 		}
 
 	pg->mapping = NULL;
@@ -2997,6 +3022,7 @@ static int __cow_write_data(struct cow_manager *cm, void *buf){
 	char *abs_path = NULL;
 	int abs_path_len;
 	uint64_t curr_size = cm->curr_pos * COW_BLOCK_SIZE;
+	/* LOG_DEBUG("curr_pos=%lld, file_max=%lld", curr_size, cm->file_max); */
 
 	if(curr_size >= cm->file_max){
 		ret = -EFBIG;
@@ -3513,6 +3539,7 @@ static int snap_handle_read_bio(const struct snap_device *dev, struct bio *bio){
 	unsigned int bio_orig_idx, bio_orig_size;
 	uint64_t block_mapping, bytes_to_copy, block_off, bvec_off;
 
+	/* LOG_DEBUG("handle_read_bio()"); */
 	//save the original state of the bio
 	orig_private = bio->bi_private;
 	orig_end_io = bio->bi_end_io;
@@ -3610,6 +3637,7 @@ static int snap_handle_write_bio(const struct snap_device *dev, struct bio *bio)
 	char *data;
 	sector_t start_block, end_block = SECTOR_TO_BLOCK(bio_sector(bio));
 
+	/* LOG_DEBUG("handle_write_bio()"); */
 	/*
 	 * Previously we iterated using bio_for_each_segment(), which
 	 * caused problems in case if our bio was split by the system.

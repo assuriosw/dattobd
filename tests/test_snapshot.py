@@ -6,6 +6,7 @@
 # Additional contributions by Elastio Software, Inc are Copyright (C) 2020 Elastio Software Inc.
 #
 
+import math
 import errno
 import os
 import platform
@@ -30,26 +31,22 @@ class TestSnapshot(DeviceTestCase):
         util.test_track(self._testMethodName, started=False)
 
     def test_modify_origin(self):
-        lines_to_write = 200000
+        file_size_mb = math.ceil(self.size_mb * 0.075)
         testfile = "{}/testfile".format(self.mount)
         snapfile = "{}/testfile".format(self.snap_mount)
 
-        with open(testfile, "w") as f:
-            for i in range(0, lines_to_write):
-                f.write("The quick brown fox\n")
+        util.dd("/dev/random", testfile, file_size_mb, bs="1M")
+        os.sync()
 
         self.addCleanup(os.remove, testfile)
-        os.sync()
         md5_orig = util.md5sum(testfile)
 
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
         self.addCleanup(elastio_snap.destroy, self.minor)
 
-        with open(testfile, "w") as f:
-            for i in range(0, lines_to_write):
-                f.write("jumps over the lazy dog\n")
-
+        util.dd("/dev/random", testfile, file_size_mb, bs="1M")
         os.sync()
+
         # TODO: norecovery option, probably, should not be here after the fix of the elastio/elastio-snap#63
         opts = "nouuid,norecovery,ro" if (self.fs == "xfs") else "ro"
         util.mount(self.snap_device, self.snap_mount, opts)
