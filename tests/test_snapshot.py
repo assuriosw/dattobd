@@ -32,6 +32,7 @@ class TestSnapshot(DeviceTestCase):
 
     def test_modify_origin(self):
         file_size_mb = math.ceil(self.size_mb * 0.05)
+        print(file_size_mb)
         testfile = "{}/testfile".format(self.mount)
         snapfile = "{}/testfile".format(self.snap_mount)
 
@@ -42,6 +43,7 @@ class TestSnapshot(DeviceTestCase):
         md5_orig = util.md5sum(testfile)
 
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
+        os.sync()
         self.addCleanup(elastio_snap.destroy, self.minor)
 
         util.dd("/dev/urandom", testfile, file_size_mb, bs="1M")
