@@ -35,7 +35,7 @@ class TestSnapshot(DeviceTestCase):
         testfile = "{}/testfile".format(self.mount)
         snapfile = "{}/testfile".format(self.snap_mount)
 
-        util.dd("/dev/random", testfile, file_size_mb, bs="1M")
+        util.dd("/dev/urandom", testfile, file_size_mb, bs="1M")
         os.sync()
 
         self.addCleanup(os.remove, testfile)
@@ -44,7 +44,7 @@ class TestSnapshot(DeviceTestCase):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
         self.addCleanup(elastio_snap.destroy, self.minor)
 
-        util.dd("/dev/random", testfile, file_size_mb, bs="1M")
+        util.dd("/dev/urandom", testfile, file_size_mb, bs="1M")
         os.sync()
 
         # TODO: norecovery option, probably, should not be here after the fix of the elastio/elastio-snap#63
