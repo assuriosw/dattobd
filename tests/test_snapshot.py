@@ -31,8 +31,10 @@ class TestSnapshot(DeviceTestCase):
         util.test_track(self._testMethodName, started=False)
 
     def test_modify_origin(self):
-        file_size_mb = math.ceil(self.size_mb * 0.05)
-        print(file_size_mb)
+        dev_size_mb = util.dev_size_mb(self.device)
+
+        # 10% - 1MB (almost full COW file)
+        file_size_mb = math.floor(dev_size_mb * 0.1) - 1
         testfile = "{}/testfile".format(self.mount)
         snapfile = "{}/testfile".format(self.snap_mount)
 

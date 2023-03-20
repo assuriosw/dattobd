@@ -2208,7 +2208,6 @@ static int file_allocate(struct snap_device *dev, struct file *f, uint64_t offse
 
 	//may write up to a page too much, ok for our use case
 	write_count = NUM_SEGMENTS(length, PAGE_SHIFT);
-	LOG_DEBUG("write_count=%lld", write_count);
 
 	//if not page aligned, write zeros to that point
 	if(offset % PAGE_SIZE != 0){
