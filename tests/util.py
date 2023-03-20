@@ -117,7 +117,8 @@ def mkfs(device, fs="ext4"):
     if (fs == "xfs"):
         cmd = ["mkfs.xfs", device, "-f"]
     else:
-        cmd = ["mkfs." + fs, "-F", device]
+        # Disable lazy init to facilitate that no additional IO will take place during tests
+        cmd = ["mkfs." + fs, "-F", "-E", "lazy_itable_init=0,lazy_journal_init=0", device]
 
     subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
 

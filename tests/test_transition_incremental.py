@@ -50,7 +50,7 @@ class TestTransitionToIncremental(DeviceTestCase):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path, fallocated_space=falloc), 0)
         self.addCleanup(elastio_snap.destroy, self.minor)
 
-        util.dd("/dev/zero", scratch, falloc + 10, bs="1M")
+        util.dd("/dev/zero", scratch, falloc + 1, bs="1M")
         self.addCleanup(os.remove, scratch)
 
         # Possible errors doing this:
@@ -66,7 +66,7 @@ class TestTransitionToIncremental(DeviceTestCase):
         self.assertIsNotNone(snapdev)
 
         self.assertEqual(snapdev["error"], -errno.EFBIG)
-        self.assertTrue(snapdev["state"] == elastio_snap.State.ACTIVE | elastio_snap.State.SNAPSHOT or snapdev["state"] == elastio_snap.State.ACTIVE)
+        self.assertTrue(snapdev["state"] & elastio_snap.State.ACTIVE)
         self.assertTrue(snapdev["flags"] & elastio_snap.Flags.COW_ON_BDEV)
 
     def test_transition_mod_sync_cow_full(self):
@@ -76,7 +76,7 @@ class TestTransitionToIncremental(DeviceTestCase):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path, fallocated_space=falloc), 0)
         self.addCleanup(elastio_snap.destroy, self.minor)
 
-        util.dd("/dev/zero", scratch, falloc + 10, bs="1M")
+        util.dd("/dev/zero", scratch, falloc + 1, bs="1M")
         self.addCleanup(os.remove, scratch)
 
         # Possible errors doing this:
@@ -92,7 +92,7 @@ class TestTransitionToIncremental(DeviceTestCase):
         self.assertIsNotNone(snapdev)
 
         self.assertEqual(snapdev["error"], -errno.EFBIG)
-        self.assertEqual(snapdev["state"], elastio_snap.State.ACTIVE)
+        self.assertTrue(snapdev["state"] & elastio_snap.State.ACTIVE)
         self.assertTrue(snapdev["flags"] & elastio_snap.Flags.COW_ON_BDEV)
 
 

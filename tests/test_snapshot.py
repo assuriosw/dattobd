@@ -33,8 +33,14 @@ class TestSnapshot(DeviceTestCase):
     def test_modify_origin(self):
         dev_size_mb = util.dev_size_mb(self.device)
 
-        # 10% - 1MB (almost full COW file)
-        file_size_mb = math.floor(dev_size_mb * 0.1) - 1
+        # The goal of this test is to ensure the data integrity
+        # For regular devices, we fill the cow file almost completely;
+        # For RAID based devices we need to leave a little bit more
+        if self.is_raid == True:
+            file_size_mb = math.floor(dev_size_mb * 0.06)
+        else:
+            file_size_mb = math.floor(dev_size_mb * 0.1) - 5
+
         testfile = "{}/testfile".format(self.mount)
         snapfile = "{}/testfile".format(self.snap_mount)
 

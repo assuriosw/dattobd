@@ -2712,14 +2712,16 @@ static int elastio_snap_get_cow_file_extents(struct snap_device *dev, struct fil
 		fiemap = filp->f_inode->i_op->fiemap;
 
 	if (fiemap) {
+		int64_t fiemap_max = ~0ULL & ~(1ULL << 63);
 		int max_num_extents = cow_ext_buf_size; // used for do_div() as it overwrites the first argument
+
 		fiemap_info.fi_flags = FIEMAP_FLAG_SYNC;
 		fiemap_info.fi_extents_mapped = 0;
 		do_div(max_num_extents, sizeof(struct fiemap_extent));
 		fiemap_info.fi_extents_max = max_num_extents;
 		fiemap_info.fi_extents_start = (struct fiemap_extent __user *)cow_ext_buf;
 
-		ret = fiemap(filp->f_inode, &fiemap_info, 0, INT_MAX);
+		ret = fiemap(filp->f_inode, &fiemap_info, 0, fiemap_max);
 
 		LOG_DEBUG("fiemap for cow file (ret %d), extents %u (max %u)", ret,
 				fiemap_info.fi_extents_mapped, fiemap_info.fi_extents_max);
@@ -2884,6 +2886,8 @@ static int cow_init(struct snap_device *dev, const char *path, uint64_t elements
 	// +--------------------------------------+
 	//
 	// +--------------------------------------+
+	// |                BLOCK                 |
+	// +--------------------------------------+
 	// |              0...4096 bytes          |
 	// +--------------------------------------+
 	//
@@ -3036,23 +3040,25 @@ static int __cow_write_data(struct cow_manager *cm, void *buf){
 	int ret;
 	char *abs_path = NULL;
 	int abs_path_len;
-	uint64_t curr_size = cm->curr_pos * COW_BLOCK_SIZE;
+	uint64_t data_offset = COW_HEADER_SIZE + (cm->total_sects * (COW_SECTION_SIZE * 8));
+	uint64_t curr_offset = cm->curr_pos * COW_BLOCK_SIZE;
+	uint64_t max_offset = cm->file_max - data_offset;
 
-	if(curr_size >= cm->file_max){
+	if(curr_offset >= cm->file_max - data_offset) {
 		ret = -EFBIG;
 
 		file_get_absolute_pathname(cm->filp, &abs_path, &abs_path_len);
 		if(!abs_path){
-			LOG_ERROR(ret, "cow file max size exceeded (%llu/%llu)", curr_size, cm->file_max);
+			LOG_ERROR(ret, "cow file max size exceeded (%llu/%llu)", curr_offset, max_offset);
 		}else{
-			LOG_ERROR(ret, "cow file '%s' max size exceeded (%llu/%llu)", abs_path, curr_size, cm->file_max);
+			LOG_ERROR(ret, "cow file '%s' max size exceeded (%llu/%llu)", abs_path, curr_offset, max_offset);
 			kfree(abs_path);
 		}
 
 		goto error;
 	}
 
-	ret = file_write_block(cm->dev, buf, curr_size, SECTORS_PER_BLOCK);
+	ret = file_write_block(cm->dev, buf, curr_offset, SECTORS_PER_BLOCK);
 	if(ret) goto error;
 
 	cm->curr_pos++;
@@ -4645,17 +4651,18 @@ static int __tracer_setup_cow(struct snap_device *dev, struct block_device *bdev
 			if(!fallocated_space){
 				max_file_size = size * SECTOR_SIZE * elastio_snap_cow_fallocate_percentage_default;
 				do_div(max_file_size, 100);
-				dev->sd_falloc_size = max_file_size;
-				do_div(dev->sd_falloc_size, (1024 * 1024));
 			}else{
 				max_file_size = fallocated_space * (1024 * 1024);
-				dev->sd_falloc_size = fallocated_space;
 			}
 
 			//create and open the cow manager
 			LOG_DEBUG("creating cow manager");
 			ret = cow_init(dev, cow_path_full, SECTOR_TO_BLOCK(size), COW_SECTION_SIZE, dev->sd_cache_size, max_file_size, uuid, seqid, &dev->sd_cow);
 			if(ret) goto error;
+
+			dev->sd_falloc_size = dev->sd_cow->file_max;
+			do_div(dev->sd_falloc_size, (1024 * 1024));
+
 		}else{
 			//reload the cow manager
 			LOG_DEBUG("reloading cow manager");
