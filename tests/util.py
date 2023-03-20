@@ -48,7 +48,7 @@ def dd(ifile, ofile, count, **kwargs):
     for k, v in kwargs.items():
         cmd.append("{}={}".format(k, v))
 
-    subprocess.check_call(cmd, timeout=60)
+    subprocess.check_call(cmd, timeout=30)
 
 
 def md5sum(path):

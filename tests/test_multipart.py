@@ -90,6 +90,7 @@ class TestMultipart(DeviceTestCaseMultipart):
             dev_size_mb = util.dev_size_mb(self.devices[i])
 
             # The goal of this test is to ensure the data integrity
+
             # We subtract a couple of megabytes to make sure the cow
             # file won't overflow during the test
             file_size_mb = math.floor(dev_size_mb * 0.1) - 2

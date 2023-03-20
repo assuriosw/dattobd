@@ -968,7 +968,7 @@ static void bio_free_pages(struct bio *bio){
 
 //global module parameters
 static int elastio_snap_may_hook_syscalls = 1;
-static unsigned long elastio_snap_cow_ext_buf_size = sizeof(struct fiemap_extent) * 512;
+static unsigned long elastio_snap_cow_ext_buf_size = sizeof(struct fiemap_extent) * 1024;
 static unsigned long elastio_snap_cow_max_memory_default = (300 * 1024 * 1024);
 static unsigned int elastio_snap_cow_fallocate_percentage_default = 10;
 static unsigned int elastio_snap_max_snap_devices = ELASTIO_SNAP_DEFAULT_SNAP_DEVICES;
@@ -2324,14 +2324,14 @@ static int __cow_load_section(struct cow_manager *cm, unsigned long sect_idx){
 	int i, ret;
 	int sect_size_bytes = COW_SECTION_SIZE * sizeof(uint64_t);
 
-	ret = __cow_alloc_section(cm, sect_idx, 1);
+	ret = __cow_alloc_section(cm, sect_idx, 0);
 	if(ret) goto error;
 
 	for (i = 0; i < sect_size_bytes / COW_BLOCK_SIZE; i++) {
 		int mapping_offset = (COW_BLOCK_SIZE / sizeof(cm->sects[sect_idx].mappings[0])) * i;
 		int cow_file_offset = COW_BLOCK_SIZE * i;
 
-		ret = file_read_block(cm->dev, cm->sects[sect_idx].mappings + mapping_offset, COW_HEADER_SIZE + cm->sect_size*sect_idx*8 + cow_file_offset, SECTORS_PER_BLOCK);
+		ret = file_read_block(cm->dev, cm->sects[sect_idx].mappings + mapping_offset, COW_HEADER_SIZE + cm->sect_size*sect_idx * sizeof(uint64_t) + cow_file_offset, SECTORS_PER_BLOCK);
 		if(ret) goto error;
 	}
 
@@ -2351,7 +2351,7 @@ static int __cow_write_section(struct cow_manager *cm, unsigned long sect_idx){
 		int mapping_offset = (COW_BLOCK_SIZE / sizeof(cm->sects[sect_idx].mappings[0])) * i;
 		int cow_file_offset = COW_BLOCK_SIZE * i;
 
-		ret = file_write_block(cm->dev, cm->sects[sect_idx].mappings + mapping_offset, COW_HEADER_SIZE + cm->sect_size*sect_idx*8 + cow_file_offset, SECTORS_PER_BLOCK);
+		ret = file_write_block(cm->dev, cm->sects[sect_idx].mappings + mapping_offset, COW_HEADER_SIZE + cm->sect_size*sect_idx * sizeof(uint64_t) + cow_file_offset, SECTORS_PER_BLOCK);
 		if(ret){
 			LOG_ERROR(ret, "error writing cow manager section to file");
 			return ret;
@@ -2784,7 +2784,7 @@ error:
 
 static unsigned long __cow_calculate_allowed_sects(unsigned long cache_size, unsigned long total_sects){
 	if(cache_size <= (total_sects * sizeof(struct cow_section))) return 0;
-	else return (cache_size - (total_sects * sizeof(struct cow_section))) / (COW_SECTION_SIZE * 8);
+	else return (cache_size - (total_sects * sizeof(struct cow_section))) / (COW_SECTION_SIZE * sizeof(uint64_t));
 }
 
 static int cow_reload(struct snap_device *dev, const char *path, uint64_t elements, unsigned long sect_size, unsigned long cache_size, int index_only, struct cow_manager **cm_out){
@@ -2805,10 +2805,10 @@ static int cow_reload(struct snap_device *dev, const char *path, uint64_t elemen
 
 	cm->allocated_sects = 0;
 	cm->sect_size = sect_size;
-	cm->log_sect_pages = get_order(sect_size*8);
+	cm->log_sect_pages = get_order(sect_size * sizeof(uint64_t));
 	cm->total_sects = NUM_SEGMENTS(elements, cm->log_sect_pages + PAGE_SHIFT - 3);
 	cm->allowed_sects = __cow_calculate_allowed_sects(cache_size, cm->total_sects);
-	cm->data_offset = COW_HEADER_SIZE + (cm->total_sects * (sect_size*8));
+	cm->data_offset = COW_HEADER_SIZE + (cm->total_sects * (sect_size * sizeof(uint64_t)));
 	dev->sd_cow_inode = cm->filp->f_inode;
 	cm->dev = dev;
 
@@ -2900,14 +2900,13 @@ static int cow_init(struct snap_device *dev, const char *path, uint64_t elements
 	//  - 65536 blocks to be mapped;
 	//  - We need 16 sectors to map everything
 	//
-	//  Belowe we calculate that.
+	//  Below we calculate that.
 	//
-	//  Here '8' is sizeof(uint64_t) (please refer to 'struct cow_section')
 
-	cm->log_sect_pages = get_order(sect_size * 8);
+	cm->log_sect_pages = get_order(sect_size * sizeof(uint64_t));
 	cm->total_sects = NUM_SEGMENTS(elements, cm->log_sect_pages + PAGE_SHIFT - 3);
 	cm->allowed_sects = __cow_calculate_allowed_sects(cache_size, cm->total_sects);
-	cm->data_offset = COW_HEADER_SIZE + (cm->total_sects * (sect_size*8));
+	cm->data_offset = COW_HEADER_SIZE + (cm->total_sects * (sect_size * sizeof(uint64_t)));
 	cm->curr_pos = cm->data_offset / COW_BLOCK_SIZE;
 	cm->file_max = file_max + cm->data_offset;
 	cm->dev = dev;
@@ -3040,7 +3039,7 @@ static int __cow_write_data(struct cow_manager *cm, void *buf){
 	int ret;
 	char *abs_path = NULL;
 	int abs_path_len;
-	uint64_t data_offset = COW_HEADER_SIZE + (cm->total_sects * (COW_SECTION_SIZE * 8));
+	uint64_t data_offset = COW_HEADER_SIZE + (cm->total_sects * (COW_SECTION_SIZE * sizeof(uint64_t)));
 	uint64_t curr_offset = cm->curr_pos * COW_BLOCK_SIZE;
 	uint64_t max_offset = cm->file_max - data_offset;
 
@@ -3559,7 +3558,6 @@ static int snap_handle_read_bio(const struct snap_device *dev, struct bio *bio){
 	unsigned int bio_orig_idx, bio_orig_size;
 	uint64_t block_mapping, bytes_to_copy, block_off, bvec_off;
 
-	/* LOG_DEBUG("handle_read_bio()"); */
 	//save the original state of the bio
 	orig_private = bio->bi_private;
 	orig_end_io = bio->bi_end_io;
