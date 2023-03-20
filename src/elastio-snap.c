@@ -2322,14 +2322,12 @@ static int __cow_alloc_section(struct cow_manager *cm, unsigned long sect_idx, i
 
 static int __cow_load_section(struct cow_manager *cm, unsigned long sect_idx){
 	int i, ret;
+	int sect_size_bytes = COW_SECTION_SIZE * sizeof(uint64_t);
 
 	ret = __cow_alloc_section(cm, sect_idx, 1);
 	if(ret) goto error;
 
-	// SECTORS_PER_BLOCK contains 512 mappings (4096 bytes / 8 bytes)
-	// sect_size is 32768 bytes containing 4096 mappings (32768 bytes / 8 bytes)
-	// hence we need to read it 8 times with a shift of 512 mappings on each iteration
-	for (i = 0; i < 8; i++) {
+	for (i = 0; i < sect_size_bytes / COW_BLOCK_SIZE; i++) {
 		int mapping_offset = (COW_BLOCK_SIZE / sizeof(cm->sects[sect_idx].mappings[0])) * i;
 		int cow_file_offset = COW_BLOCK_SIZE * i;
 
@@ -2347,11 +2345,9 @@ error:
 
 static int __cow_write_section(struct cow_manager *cm, unsigned long sect_idx){
 	int i, ret;
+	int sect_size_bytes = COW_SECTION_SIZE * sizeof(uint64_t);
 
-	// SECTORS_PER_BLOCK contains 512 mappings (4096 bytes / 8 bytes)
-	// sect_size is 32768 bytes containing 4096 mappings (32768 bytes / 8 bytes)
-	// hence we need to write it 8 times with a shift of 512 mappings on each iteration
-	for (i = 0; i < 8; i++) {
+	for (i = 0; i < sect_size_bytes / COW_BLOCK_SIZE; i++) {
 		int mapping_offset = (COW_BLOCK_SIZE / sizeof(cm->sects[sect_idx].mappings[0])) * i;
 		int cow_file_offset = COW_BLOCK_SIZE * i;
 
