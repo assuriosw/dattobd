@@ -36,6 +36,9 @@ class TestSnapshot(DeviceTestCase):
         # The goal of this test is to ensure the data integrity
         # For regular devices, we fill the cow file almost completely;
         # For RAID based devices we need to leave a little bit more
+
+        # We subtract a couple of megabytes to make sure the cow
+        # file won't overflow during the test
         if self.is_raid == True:
             file_size_mb = math.floor(dev_size_mb * 0.06)
         else:

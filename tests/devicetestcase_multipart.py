@@ -22,7 +22,10 @@ class DeviceTestCaseMultipart(unittest.TestCase):
         # For now let's hardcode 7 partitions
         cls.part_count = 7
         cls.minors = []
-        cls.size_mb = 256
+
+        # We create the device big enough to perform
+        # representative 'test_multipart_modify_origins'
+        cls.size_mb = 1024
 
         for i in range(cls.part_count):
             # Unexpectedly randint can generate 2 same numbers in a row.
