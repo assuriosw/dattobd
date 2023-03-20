@@ -2208,6 +2208,7 @@ static int file_allocate(struct snap_device *dev, struct file *f, uint64_t offse
 
 	//may write up to a page too much, ok for our use case
 	write_count = NUM_SEGMENTS(length, PAGE_SHIFT);
+	LOG_DEBUG("write_count=%lld", write_count);
 
 	//if not page aligned, write zeros to that point
 	if(offset % PAGE_SIZE != 0){
@@ -2871,14 +2872,45 @@ static int cow_init(struct snap_device *dev, const char *path, uint64_t elements
 	cm->nr_changed_blocks = 0;
 	cm->flags = 0;
 	cm->allocated_sects = 0;
-	cm->file_max = file_max;
 	cm->sect_size = sect_size;
 	cm->seqid = seqid;
-	cm->log_sect_pages = get_order(sect_size*8);
+
+	// Perhaps the code below needs a small explanation
+	//
+	// The COW file structure is as follows:
+	// +--------------------+----------+------+
+	// | HEADER (+padding)  | SECTIONS | DATA |
+	// +--------------------+----------+------+
+	//
+	// +--------------------------------------+
+	// |               SECTION                |
+	// +--------------------------------------+
+	// | block 1 | block 2 | ... | block 4096 |
+	// +--------------------------------------+
+	//
+	// +--------------------------------------+
+	// |              0...4096 bytes          |
+	// +--------------------------------------+
+	//
+	// 1. Each sector has 4096 cow block mappings
+	// 2. Each mapping describes 4096 bytes segment
+	//
+	// Suppose we have 256 MB disk.
+	// Taking PAGE_SIZE == COW_BLOCK_SIZE == 4096 bytes, yield:
+	//
+	//  - 65536 blocks to be mapped;
+	//  - We need 16 sectors to map everything
+	//
+	//  Belowe we calculate that.
+	//
+	//  Here '8' is sizeof(uint64_t) (please refer to 'struct cow_section')
+
+	cm->log_sect_pages = get_order(sect_size * 8);
 	cm->total_sects = NUM_SEGMENTS(elements, cm->log_sect_pages + PAGE_SHIFT - 3);
 	cm->allowed_sects = __cow_calculate_allowed_sects(cache_size, cm->total_sects);
 	cm->data_offset = COW_HEADER_SIZE + (cm->total_sects * (sect_size*8));
 	cm->curr_pos = cm->data_offset / COW_BLOCK_SIZE;
+	cm->file_max = file_max + cm->data_offset;
 	cm->dev = dev;
 
 	if(uuid) memcpy(cm->uuid, uuid, COW_UUID_SIZE);
@@ -3485,7 +3517,7 @@ static int snap_read_bio_get_mode(const struct snap_device *dev, struct bio *bio
 		while(bytes < bio_iter_len(bio, iter)){
 			//find the start and stop byte for our next write
 			curr_byte = curr_end_byte;
-			curr_end_byte += min(COW_BLOCK_SIZE - (curr_byte % COW_BLOCK_SIZE), ((uint64_t)bio_iter_len(bio, iter)));
+			curr_end_byte += min(COW_BLOCK_SIZE - (curr_byte % COW_BLOCK_SIZE), ((uint64_t)bio_iter_len(bio, iter) - bytes));
 
 			//check if the mapping exists
 			ret = cow_read_mapping(dev->sd_cow, curr_byte / COW_BLOCK_SIZE, &block_mapping);
@@ -3624,7 +3656,6 @@ static int snap_handle_write_bio(const struct snap_device *dev, struct bio *bio)
 	char *data;
 	sector_t start_block, end_block = SECTOR_TO_BLOCK(bio_sector(bio));
 
-	/* LOG_DEBUG("handle_write_bio()"); */
 	/*
 	 * Previously we iterated using bio_for_each_segment(), which
 	 * caused problems in case if our bio was split by the system.
@@ -3648,7 +3679,7 @@ static int snap_handle_write_bio(const struct snap_device *dev, struct bio *bio)
 		data = kmap(bvec->bv_page);
 		//loop through the blocks in the page
 		for(; start_block < end_block; start_block++){
-			//pas the block to the cow manager to be handled
+			//pass the block to the cow manager to be handled
 			ret = cow_write_current(dev->sd_cow, start_block, data);
 			if(ret){
 				kunmap(bvec->bv_page);
