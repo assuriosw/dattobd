@@ -2908,7 +2908,7 @@ static int cow_init(struct snap_device *dev, const char *path, uint64_t elements
 	cm->allowed_sects = __cow_calculate_allowed_sects(cache_size, cm->total_sects);
 	cm->data_offset = COW_HEADER_SIZE + (cm->total_sects * (sect_size * sizeof(uint64_t)));
 	cm->curr_pos = cm->data_offset / COW_BLOCK_SIZE;
-	cm->file_max = file_max + cm->data_offset;
+	cm->file_max = file_max + cm->data_offset; // reserve additional room for sections
 	cm->dev = dev;
 
 	if(uuid) memcpy(cm->uuid, uuid, COW_UUID_SIZE);
