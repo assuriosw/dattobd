@@ -54,7 +54,6 @@ class TestSnapshot(DeviceTestCase):
         md5_orig = util.md5sum(testfile)
 
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)
-        os.sync()
         self.addCleanup(elastio_snap.destroy, self.minor)
 
         util.dd("/dev/urandom", testfile, file_size_mb, bs="1M")

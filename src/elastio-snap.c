@@ -1847,6 +1847,7 @@ write_bio:
 	start_sect = sector_by_offset(dev, offset);
 	if (start_sect == SECTOR_INVALID) {
 		LOG_WARN("Possible write IO to the end of file (offset=%lu)", offset);
+		ret = -EFAULT;
 		goto out;
 	}
 

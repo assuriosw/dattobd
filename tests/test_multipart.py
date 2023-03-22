@@ -105,8 +105,6 @@ class TestMultipart(DeviceTestCaseMultipart):
             md5_orig = util.md5sum(testfile)
 
             self.assertEqual(elastio_snap.setup(self.minors[i], self.devices[i], self.cow_full_paths[i]), 0)
-            os.sync()
-
             self.addCleanup(elastio_snap.destroy, self.minors[i])
 
             util.dd("/dev/urandom", testfile, file_size_mb, bs="1M")

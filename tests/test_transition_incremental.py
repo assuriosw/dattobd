@@ -66,6 +66,10 @@ class TestTransitionToIncremental(DeviceTestCase):
         self.assertIsNotNone(snapdev)
 
         self.assertEqual(snapdev["error"], -errno.EFBIG)
+
+        # SNAPSHOT bit is not checked because it's may or may not be set
+        # dependently on the place of the failure in transition_to_incremental().
+        # But ACTIVE bit should be present in any case.
         self.assertTrue(snapdev["state"] & elastio_snap.State.ACTIVE)
         self.assertTrue(snapdev["flags"] & elastio_snap.Flags.COW_ON_BDEV)
 
@@ -92,6 +96,10 @@ class TestTransitionToIncremental(DeviceTestCase):
         self.assertIsNotNone(snapdev)
 
         self.assertEqual(snapdev["error"], -errno.EFBIG)
+
+        # SNAPSHOT bit is not checked because it's may or may not be set
+        # dependently on the place of the failure in transition_to_incremental().
+        # But ACTIVE bit should be present in any case.
         self.assertTrue(snapdev["state"] & elastio_snap.State.ACTIVE)
         self.assertTrue(snapdev["flags"] & elastio_snap.Flags.COW_ON_BDEV)
 
