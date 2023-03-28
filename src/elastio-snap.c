@@ -1955,6 +1955,7 @@ read_bio:
 	start_sect = sector_by_offset(dev, offset);
 	if (start_sect == SECTOR_INVALID) {
 		LOG_WARN("Possible read IO to the end of file (offset=%lu)", offset);
+		ret = -EFAULT;
 		goto out;
 	}
 
@@ -4199,8 +4200,13 @@ call_orig:
 		MRF_SET_RETURN_VALUE(submit_bio_noacct(bio));
 	}
 #else
-	if(orig_mrf) ret = __elastio_snap_call_mrf(orig_mrf, q, bio);
-	else LOG_ERROR(-EFAULT, "error finding original_mrf");
+	if(orig_mrf) {
+		ret = __elastio_snap_call_mrf(orig_mrf, q, bio);
+	}
+	else {
+		LOG_WARN("error finding original_mrf");
+		ret = submit_bio(bio);
+	}
 #endif
 out:
 	MRF_RETURN(ret);
