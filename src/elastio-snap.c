@@ -4202,10 +4202,9 @@ call_orig:
 #else
 	if(orig_mrf) {
 		ret = __elastio_snap_call_mrf(orig_mrf, q, bio);
-	}
-	else {
+	} else {
 		LOG_WARN("error finding original_mrf");
-		ret = elastio_snap_submit_bio(bio);
+		MRF_SET_RETURN_VALUE(elastio_snap_submit_bio(bio));
 	}
 #endif
 out:
