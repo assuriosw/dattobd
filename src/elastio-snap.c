@@ -4205,7 +4205,7 @@ call_orig:
 	}
 	else {
 		LOG_WARN("error finding original_mrf");
-		ret = submit_bio(bio);
+		ret = elastio_snap_submit_bio(bio);
 	}
 #endif
 out:
