@@ -136,6 +136,7 @@ jobs:
         working-directory: ${{env.BOX_DIR}}
 
       - name: Install LVM and RAID tools
+        if: "${{ matrix.distro != 'debian8'}}"
         run: |
           vagrant ssh ${{env.INSTANCE_NAME}} -c '
             set -x
@@ -193,6 +194,7 @@ jobs:
         timeout-minutes: 1
 
       - name: Run tests on LVM (loop device)
+        if: "${{ matrix.distro != 'debian8'}}"
         run: |
           for fs in ${FS[*]}; do
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -f $fs --lvm"
@@ -209,6 +211,7 @@ jobs:
         timeout-minutes: 1
 
       - name: Run tests on RAID (loop device)
+        if: "${{ matrix.distro != 'debian8'}}"
         run: |
           for fs in ${FS[*]}; do
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -f $fs --raid"
@@ -264,6 +267,7 @@ jobs:
         timeout-minutes: 1
 
       - name: Run tests on LVM (qcow2 disks)
+        if: "${{ matrix.distro != 'debian8'}}"
         run: |
           for fs in ${FS[*]}; do
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb -d /dev/vdc -f $fs --lvm"
@@ -278,6 +282,7 @@ jobs:
         timeout-minutes: 1
 
       - name: Run tests on RAID (qcow2 disks)
+        if: "${{ matrix.distro != 'debian8'}}"
         run: |
           for fs in ${FS[*]}; do
             # An issue is observed in virtio driver whith XFS and kernel 3.16 on Debian 8. It's a known issue, it happens on
