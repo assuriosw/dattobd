@@ -284,9 +284,22 @@ def disassemble_mirror_raid(raid_device, devices):
         mdadm_zero_superblock(get_last_partition(device))
 
 def kernel_warning_exists():
+    exceptions_str = [
+        # known issue on Fedora 32 (v5.9), related to the LVM driver
+            'blkdev_issue_discard'
+        ]
+
     cmd = [ "dmesg", "-l", "warn" ]
     output = subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8")
-    return True if 'Modules linked in:' in output else False
+
+    # kernel warning occurred
+    if 'Modules linked in:' in output:
+        for exception in exceptions_str:
+            if exception in output:
+                return False
+        return True
+
+    return False
 
 def test_track(test_name, started):
     with open('/dev/kmsg', 'w') as f:
