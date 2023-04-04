@@ -283,9 +283,14 @@ def disassemble_mirror_raid(raid_device, devices):
     for device in devices:
         mdadm_zero_superblock(get_last_partition(device))
 
+def kernel_warning_exists():
+    cmd = [ "dmesg", "-l", "warn" ]
+    output = subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8")
+    return True if 'Modules linked in:' in output else False
+
 def test_track(test_name, started):
     with open('/dev/kmsg', 'w') as f:
         if (started == True):
-            f.write('--- {} started ---'.format(test_name))
+            f.write('<6>--- {} started ---'.format(test_name))
         else:
-            f.write('--- {} done. ---'.format(test_name))
+            f.write('<6>--- {} done. ---'.format(test_name))
