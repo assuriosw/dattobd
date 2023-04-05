@@ -5026,7 +5026,7 @@ static void __tracer_destroy_tracing(struct snap_device *dev){
 				}
 
 				if(ret) {
-					LOG_DEBUG("ERROR, HANDLE ME PROPERLY!");
+					LOG_ERROR(ret, "Failed to setup cow thread for device with minor %i and flush bio requests", dev->sd_minor);
 				}
 
 				wake_up_process(dev->sd_cow_thread);
