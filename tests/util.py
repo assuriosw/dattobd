@@ -285,7 +285,7 @@ def disassemble_mirror_raid(raid_device, devices):
 
 def kernel_warning_exists():
     exceptions_str = [
-        # known issue on Fedora 32 (v5.9), related to the LVM driver
+            # known issue on Fedora 32 (v5.9), related to the LVM driver
             'blkdev_issue_discard'
         ]
 
