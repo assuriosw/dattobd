@@ -1255,26 +1255,6 @@ static inline int wrap_err_io(struct snap_device *dev){
     return !dev->sd_ignore_snap_errors ? -EIO : 0;
 }
 
-static void test_rw(struct snap_device *dev);
-
-static int param_set_write(const char *val, const struct kernel_param *kp)
-{
-	struct snap_device *dev;
-
-	dev = snap_devices[0];
-	test_rw(dev);
-
-	LOG_DEBUG("done.");
-	return 0;
-}
-
-static struct kernel_param_ops param_ops = {
- .set = param_set_write,
- .get = param_get_uint,
-};
-static int write_bio;
-module_param_cb(write_bio, &param_ops, &write_bio, 0644);
-
 /************************IOCTL COPY FROM USER FUNCTIONS************************/
 
 static int copy_string_from_user(const char __user *data, char **out_ptr){
@@ -2165,21 +2145,6 @@ static int real_fallocate(struct file *f, uint64_t offset, uint64_t length){
 	return ret;
 }
 #endif
-
-static void test_rw(struct snap_device *dev)
-{
-	char *buf = kmalloc(PAGE_SIZE, GFP_KERNEL);
-	int i = 0;
-	for (i = 0; i < 256; i++)
-		memset(buf + i*16, i, 16);
-
-	print_hex_dump(KERN_CONT, "initial buf ", DUMP_PREFIX_OFFSET, 16, 1, buf, PAGE_SIZE, false);
-	file_write_block(dev, buf, 1052672, SECTORS_PER_BLOCK);
-	memset(buf, 0, PAGE_SIZE);
-	file_read_block(dev, buf, 1052672, SECTORS_PER_BLOCK);
-	print_hex_dump(KERN_CONT, "read buf ", DUMP_PREFIX_OFFSET, 16, 1, buf, PAGE_SIZE, false);
-	kfree(buf);
-}
 
 static int file_allocate(struct snap_device *dev, struct file *f, uint64_t offset, uint64_t length){
 	int ret = 0;
