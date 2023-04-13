@@ -1807,6 +1807,9 @@ sector_t sector_by_offset(struct snap_device *dev, size_t offset)
  */
 static void __on_bio_cow_write_complete(struct bio *bio, int err){
 	int ret = 0;
+	struct page *bv_page;
+	struct bio_vec *bvec;
+	struct bvec_iter_all iter;
 	struct snap_device *dev = bio->bi_private;
 
 	if(err) {
@@ -1814,7 +1817,20 @@ static void __on_bio_cow_write_complete(struct bio *bio, int err){
 		LOG_ERROR(ret, "error writing to the copy on write file");
 	}
 
-	bio_free_pages(bio);
+#ifdef HAVE_BVEC_ITER_ALL
+	bio_for_each_segment_all(bvec, bio, iter) {
+#else
+		int i = 0;
+		struct bio_vec *bvec;
+		bio_for_each_segment_all(bvec, bio, i) {
+#endif
+			bv_page = bvec->bv_page;
+			if (bv_page) {
+				bv_page->mapping = NULL; // we set it earlier
+				__free_page(bv_page);
+			}
+		}
+
 	bio_put(bio);
 }
 
@@ -1923,6 +1939,7 @@ write_bio:
 			goto out;
 		}
 
+		pg->mapping = NULL;
 		bio_free_pages(new_bio);
 		bio_put(new_bio);
 		new_bio = NULL;
@@ -1932,8 +1949,6 @@ write_bio:
 		new_bio->bi_end_io = on_bio_cow_write_complete;
 		elastio_snap_submit_bio(new_bio);
 	}
-
-	pg->mapping = NULL;
 
 	if (sectors_processed != len)
 		goto write_bio;
