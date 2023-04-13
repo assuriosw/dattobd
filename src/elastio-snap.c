@@ -1802,7 +1802,42 @@ sector_t sector_by_offset(struct snap_device *dev, size_t offset)
 	return SECTOR_INVALID;
 }
 
-int file_write_block(struct snap_device *dev, void *block, size_t offset, size_t len)
+/** Unlike __on_bio_read_complete(), this one isn't engaged in the tracing
+ *  It is used for the async direct write operations to the cow file
+ */
+static void __on_bio_cow_write_complete(struct bio *bio, int err){
+	int ret = 0;
+	struct snap_device *dev = bio->bi_private;
+
+	if(err) {
+		tracer_set_fail_state(dev, ret);
+		LOG_ERROR(ret, "error writing to the copy on write file");
+	}
+
+	bio_free_pages(bio);
+	bio_put(bio);
+}
+
+#ifdef HAVE_BIO_ENDIO_INT
+static int on_bio_cow_write_complete(struct bio *bio, unsigned int bytes, int err) {
+	__on_bio_cow_write_complete(bio, err);
+	return 0;
+}
+#elif !defined HAVE_BIO_ENDIO_1
+static void on_bio_cow_write_complete(struct bio *bio, int err) {
+	__on_bio_cow_write_complete(bio, err);
+}
+#elif defined HAVE_BLK_STATUS_T
+static void on_bio_cow_write_complete(struct bio *bio) {
+	__on_bio_cow_write_complete(bio, blk_status_to_errno(bio->bi_status));
+}
+#else
+static void on_bio_cow_write_complete(struct bio *bio) {
+	__on_bio_cow_write_complete(bio, bio->bi_error);
+}
+#endif
+
+int file_write_block(struct snap_device *dev, void *block, size_t offset, size_t len, bool wait)
 {
 	int ret;
 	int bytes;
@@ -1881,16 +1916,24 @@ write_bio:
 	if (dev->sd_cow_inode)
 		pg->mapping = dev->sd_cow_inode->i_mapping;
 
-	ret = elastio_snap_submit_bio_wait(new_bio);
-	if (ret) {
-		LOG_ERROR(ret, "submit_bio_wait() error!");
-		goto out;
+	if (wait) {
+		ret = elastio_snap_submit_bio_wait(new_bio);
+		if (ret) {
+			LOG_ERROR(ret, "submit_bio_wait() error!");
+			goto out;
+		}
+
+		bio_free_pages(new_bio);
+		bio_put(new_bio);
+		new_bio = NULL;
+
+	} else {
+		new_bio->bi_private = dev;
+		new_bio->bi_end_io = on_bio_cow_write_complete;
+		elastio_snap_submit_bio(new_bio);
 	}
 
 	pg->mapping = NULL;
-	bio_free_pages(new_bio);
-	bio_put(new_bio);
-	new_bio = NULL;
 
 	if (sectors_processed != len)
 		goto write_bio;
@@ -1898,8 +1941,10 @@ write_bio:
 out:
 	if (new_bio) {
 		pg->mapping = NULL;
-		bio_free_pages(new_bio);
-		bio_put(new_bio);
+		if (wait) {
+			bio_free_pages(new_bio);
+			bio_put(new_bio);
+		}
 	}
 
 	return ret;
@@ -2320,7 +2365,7 @@ static int __cow_write_section(struct cow_manager *cm, unsigned long sect_idx){
 		int mapping_offset = (COW_BLOCK_SIZE / sizeof(cm->sects[sect_idx].mappings[0])) * i;
 		int cow_file_offset = COW_BLOCK_SIZE * i;
 
-		ret = file_write_block(cm->dev, cm->sects[sect_idx].mappings + mapping_offset, COW_HEADER_SIZE + cm->sect_size*sect_idx * sizeof(uint64_t) + cow_file_offset, SECTORS_PER_BLOCK);
+		ret = file_write_block(cm->dev, cm->sects[sect_idx].mappings + mapping_offset, COW_HEADER_SIZE + cm->sect_size*sect_idx * sizeof(uint64_t) + cow_file_offset, SECTORS_PER_BLOCK, false);
 		if(ret){
 			LOG_ERROR(ret, "error writing cow manager section to file");
 			return ret;
@@ -2406,7 +2451,7 @@ static int __cow_write_header(struct cow_manager *cm, int is_clean){
 	ch->version = cm->version;
 	ch->nr_changed_blocks = cm->nr_changed_blocks;
 
-	ret = file_write_block(cm->dev, ch, 0, 1);
+	ret = file_write_block(cm->dev, ch, 0, 1, true);
 	if(ret){
 		LOG_ERROR(ret, "error syncing cow manager header");
 		kfree(ch);
@@ -3026,7 +3071,7 @@ static int __cow_write_data(struct cow_manager *cm, void *buf){
 		goto error;
 	}
 
-	ret = file_write_block(cm->dev, buf, curr_offset, SECTORS_PER_BLOCK);
+	ret = file_write_block(cm->dev, buf, curr_offset, SECTORS_PER_BLOCK, false);
 	if(ret) goto error;
 
 	cm->curr_pos++;
@@ -3899,6 +3944,27 @@ error:
 	bio_free_clone(bio);
 }
 
+#ifdef HAVE_BIO_ENDIO_INT
+static int on_bio_read_complete(struct bio *bio, unsigned int bytes, int err) {
+	if(bio->bi_size) return 1;
+	__on_bio_read_complete(bio, err);
+	return 0;
+}
+#elif !defined HAVE_BIO_ENDIO_1
+static void on_bio_read_complete(struct bio *bio, int err) {
+	if(!test_bit(BIO_UPTODATE, &bio->bi_flags)) err = -EIO;
+	__on_bio_read_complete(bio, err);
+}
+#elif defined HAVE_BLK_STATUS_T
+static void on_bio_read_complete(struct bio *bio) {
+	__on_bio_read_complete(bio, blk_status_to_errno(bio->bi_status));
+}
+#else
+static void on_bio_read_complete(struct bio *bio) {
+	__on_bio_read_complete(bio, bio->bi_error);
+}
+#endif
+
 /** Resolves issue https://github.com/elastio/elastio-snap/issues/170 */
 static inline void wait_for_bio_complete(struct snap_device *dev)
 {
@@ -3910,27 +3976,6 @@ static inline void wait_for_bio_complete(struct snap_device *dev)
 				WAIT_SUBMITTED_BIOS_MSEC, (u64)atomic64_read(&dev->sd_submitted_cnt), (u64)atomic64_read(&dev->sd_processed_cnt));
 	}
 }
-
-#ifdef HAVE_BIO_ENDIO_INT
-static int on_bio_read_complete(struct bio *bio, unsigned int bytes, int err){
-	if(bio->bi_size) return 1;
-	__on_bio_read_complete(bio, err);
-	return 0;
-}
-#elif !defined HAVE_BIO_ENDIO_1
-static void on_bio_read_complete(struct bio *bio, int err){
-	if(!test_bit(BIO_UPTODATE, &bio->bi_flags)) err = -EIO;
-	__on_bio_read_complete(bio, err);
-}
-#elif defined HAVE_BLK_STATUS_T
-static void on_bio_read_complete(struct bio *bio){
-	__on_bio_read_complete(bio, blk_status_to_errno(bio->bi_status));
-}
-#else
-static void on_bio_read_complete(struct bio *bio){
-	__on_bio_read_complete(bio, bio->bi_error);
-}
-#endif
 
 static int memory_is_too_low(struct snap_device *dev) {
 	int ret;
