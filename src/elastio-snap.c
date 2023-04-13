@@ -1808,9 +1808,11 @@ sector_t sector_by_offset(struct snap_device *dev, size_t offset)
 static void __on_bio_cow_write_complete(struct bio *bio, int err){
 	int ret = 0;
 	struct page *bv_page;
+	struct snap_device *dev = bio->bi_private;
+#ifdef HAVE_BVEC_ITER_ALL
 	struct bio_vec *bvec;
 	struct bvec_iter_all iter;
-	struct snap_device *dev = bio->bi_private;
+#endif
 
 	if(err) {
 		tracer_set_fail_state(dev, ret);
