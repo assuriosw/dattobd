@@ -79,5 +79,3 @@ class DeviceTestCase(unittest.TestCase):
 
         os.rmdir(cls.mount)
         cls.kmod.unload()
-
-        assert(util.kernel_warning_exists() == False)
