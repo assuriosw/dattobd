@@ -742,54 +742,6 @@ static inline void file_switch_lock(struct file *filp, bool lock, bool mark_dirt
 #define file_unlock(filp) file_switch_lock(filp, false, false)
 #define file_unlock_mark_dirty(filp) file_switch_lock(filp, false, true)
 
-static inline ssize_t elastio_snap_kernel_read(struct file *filp, void *buf, size_t count, loff_t *pos){
-	ssize_t ret;
-#ifndef HAVE_KERNEL_READ_PPOS
-//#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
-	mm_segment_t old_fs;
-
-	file_unlock(filp);
-
-	old_fs = get_fs();
-	set_fs(get_ds());
-	ret = vfs_read(filp, (char __user *)buf, count, pos);
-	set_fs(old_fs);
-
-	file_lock(filp);
-
-	return ret;
-#else
-	file_unlock(filp);
-	ret = kernel_read(filp, buf, count, pos);
-	file_lock(filp);
-	return ret;
-#endif
-}
-
-static inline ssize_t elastio_snap_kernel_write(struct file *filp, const void *buf, size_t count, loff_t *pos){
-	ssize_t ret;
-#ifndef HAVE_KERNEL_WRITE_PPOS
-//#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
-	mm_segment_t old_fs;
-
-	file_unlock(filp);
-
-	old_fs = get_fs();
-	set_fs(get_ds());
-
-	ret = vfs_write(filp, (__force const char __user *)buf, count, pos);
-	set_fs(old_fs);
-
-	file_lock(filp);
-	return ret;
-#else
-	file_unlock(filp);
-	ret = kernel_write(filp, buf, count, pos);
-	file_lock(filp);
-	return ret;
-#endif
-}
-
 static inline struct request_queue *elastio_snap_bio_get_queue(struct bio *bio){
 #if defined HAVE_BIO_BI_BDEV && defined HAVE_MAKE_REQUEST_FN_IN_QUEUE
 //#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
@@ -1766,28 +1718,6 @@ error:
 	return ret;
 }
 
-static int file_io(struct file *filp, int is_write, void *buf, sector_t offset, unsigned long len){
-	ssize_t ret;
-	loff_t off = (loff_t)offset;
-
-	if(is_write) ret = elastio_snap_kernel_write(filp, buf, len, &off);
-	else ret = elastio_snap_kernel_read(filp, buf, len, &off);
-
-	if(ret < 0){
-		LOG_ERROR((int)ret, "error performing file '%s': %llu, %lu", (is_write)? "write" : "read", (unsigned long long)offset, len);
-		return ret;
-	}else if(ret != len){
-		LOG_ERROR(-EIO, "invalid file '%s' size: %llu, %lu, %lu", (is_write)? "write" : "read", (unsigned long long)offset, len, (unsigned long)ret);
-		ret = -EIO;
-		return ret;
-	}
-
-	return 0;
-}
-
-#define file_write(filp, buf, offset, len) file_io(filp, 1, buf, offset, len)
-#define file_read(filp, buf, offset, len) file_io(filp, 0, buf, offset, len)
-
 #define SECTOR_INVALID ~(u64)0
 
 sector_t sector_by_offset(struct snap_device *dev, size_t offset)
@@ -2026,6 +1956,96 @@ out:
 	return ret;
 }
 
+static inline ssize_t elastio_snap_kernel_read(struct cow_manager *cm, void *buf, size_t count, loff_t *pos){
+	ssize_t ret;
+
+	if (cm->filp) {
+#ifndef HAVE_KERNEL_READ_PPOS
+		//#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
+		mm_segment_t old_fs;
+
+		file_unlock(cm->filp);
+
+		old_fs = get_fs();
+		set_fs(get_ds());
+		ret = vfs_read(cm->filp, (char __user *)buf, count, pos);
+		set_fs(old_fs);
+
+		file_lock(cm->filp);
+
+		return ret;
+#else
+		file_unlock(cm->filp);
+		ret = kernel_read(cm->filp, buf, count, pos);
+		file_lock(cm->filp);
+		return ret;
+#endif
+	} else {
+		WARN_ON(count % SECTOR_SIZE != 0);
+		LOG_DEBUG("reading %lu sectors...", count / SECTOR_SIZE);
+		ret = file_read_block(cm->dev, buf, *pos, count / SECTOR_SIZE);
+		if (!ret) ret = count;
+
+		return ret;
+	}
+}
+
+static inline ssize_t elastio_snap_kernel_write(struct cow_manager *cm, void *buf, size_t count, loff_t *pos){
+	ssize_t ret;
+
+	if (cm->filp) {
+#ifndef HAVE_KERNEL_WRITE_PPOS
+		//#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
+		mm_segment_t old_fs;
+
+		file_unlock(cm->filp);
+
+		old_fs = get_fs();
+		set_fs(get_ds());
+
+		ret = vfs_write(cm->filp, (__force const char __user *)buf, count, pos);
+		set_fs(old_fs);
+
+		file_lock(cm->filp);
+		return ret;
+#else
+		file_unlock(cm->filp);
+		ret = kernel_write(cm->filp, buf, count, pos);
+		file_lock(cm->filp);
+		return ret;
+#endif
+	} else {
+		WARN_ON(count % SECTOR_SIZE != 0);
+		LOG_DEBUG("writing %lu sectors...", count / SECTOR_SIZE);
+		ret = file_write_block(cm->dev, buf, *pos, count / SECTOR_SIZE);
+		if (!ret) ret = count;
+
+		return ret;
+	}
+}
+
+static int file_io(struct cow_manager *cm, int is_write, void *buf, sector_t offset, unsigned long len){
+	ssize_t ret;
+	loff_t off = (loff_t)offset;
+
+	if(is_write) ret = elastio_snap_kernel_write(cm, buf, len, &off);
+	else ret = elastio_snap_kernel_read(cm, buf, len, &off);
+
+	if(ret < 0){
+		LOG_ERROR((int)ret, "error performing file '%s': %llu, %lu", (is_write)? "write" : "read", (unsigned long long)offset, len);
+		return ret;
+	}else if(ret != len){
+		LOG_ERROR(-EIO, "invalid file '%s' size: %llu, %lu, %lu", (is_write)? "write" : "read", (unsigned long long)offset, len, (unsigned long)ret);
+		ret = -EIO;
+		return ret;
+	}
+
+	return 0;
+}
+
+#define file_write(cm, buf, offset, len) file_io(cm, 1, buf, offset, len)
+#define file_read(cm, buf, offset, len) file_io(cm, 0, buf, offset, len)
+
 //reimplemented from linux kernel (it isn't exported in the vanilla kernel)
 static int elastio_snap_do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs, struct file *filp){
 	int ret;
@@ -2180,7 +2200,7 @@ static int file_allocate(struct snap_device *dev, struct file *f, uint64_t offse
 
 	//if not page aligned, write zeros to that point
 	if(offset % PAGE_SIZE != 0){
-		ret = file_write(f, page_buf, offset, PAGE_SIZE - (offset % PAGE_SIZE));
+		ret = file_write(dev->sd_cow, page_buf, offset, PAGE_SIZE - (offset % PAGE_SIZE));
 		if(ret) goto error;
 
 		offset += PAGE_SIZE - (offset % PAGE_SIZE);
@@ -2188,7 +2208,7 @@ static int file_allocate(struct snap_device *dev, struct file *f, uint64_t offse
 
 	//write a page of zeros at a time
 	for(i = 0; i < write_count; i++){
-		ret = file_write(f, page_buf, offset + (PAGE_SIZE * i), PAGE_SIZE);
+		ret = file_write(dev->sd_cow, page_buf, offset + (PAGE_SIZE * i), PAGE_SIZE);
 		if(ret) goto error;
 	}
 
@@ -2300,7 +2320,7 @@ static int __cow_load_section(struct cow_manager *cm, unsigned long sect_idx){
 		int mapping_offset = (COW_BLOCK_SIZE / sizeof(cm->sects[sect_idx].mappings[0])) * i;
 		int cow_file_offset = COW_BLOCK_SIZE * i;
 
-		ret = file_read_block(cm->dev, cm->sects[sect_idx].mappings + mapping_offset, COW_HEADER_SIZE + cm->sect_size*sect_idx * sizeof(uint64_t) + cow_file_offset, SECTORS_PER_BLOCK);
+		ret = file_read(cm, cm->sects[sect_idx].mappings + mapping_offset, COW_HEADER_SIZE + cm->sect_size*sect_idx * sizeof(uint64_t) + cow_file_offset, COW_BLOCK_SIZE);
 		if(ret) goto error;
 	}
 
@@ -2320,7 +2340,7 @@ static int __cow_write_section(struct cow_manager *cm, unsigned long sect_idx){
 		int mapping_offset = (COW_BLOCK_SIZE / sizeof(cm->sects[sect_idx].mappings[0])) * i;
 		int cow_file_offset = COW_BLOCK_SIZE * i;
 
-		ret = file_write_block(cm->dev, cm->sects[sect_idx].mappings + mapping_offset, COW_HEADER_SIZE + cm->sect_size*sect_idx * sizeof(uint64_t) + cow_file_offset, SECTORS_PER_BLOCK);
+		ret = file_write(cm, cm->sects[sect_idx].mappings + mapping_offset, COW_HEADER_SIZE + cm->sect_size*sect_idx * sizeof(uint64_t) + cow_file_offset, COW_BLOCK_SIZE);
 		if(ret){
 			LOG_ERROR(ret, "error writing cow manager section to file");
 			return ret;
@@ -2388,7 +2408,7 @@ static int __cow_cleanup_mappings(struct cow_manager *cm){
 
 static int __cow_write_header(struct cow_manager *cm, int is_clean){
 	int ret;
-	struct cow_header *ch = kzalloc(SECTOR_SIZE, GFP_KERNEL);
+	struct cow_header *ch = kzalloc(COW_HEADER_SIZE, GFP_KERNEL);
 	if (!ch) {
 		LOG_ERROR(-ENOMEM, "allocation failed");
 		return -ENOMEM;
@@ -2406,7 +2426,7 @@ static int __cow_write_header(struct cow_manager *cm, int is_clean){
 	ch->version = cm->version;
 	ch->nr_changed_blocks = cm->nr_changed_blocks;
 
-	ret = file_write_block(cm->dev, ch, 0, 1);
+	ret = file_write(cm, ch, 0, COW_HEADER_SIZE);
 	if(ret){
 		LOG_ERROR(ret, "error syncing cow manager header");
 		kfree(ch);
@@ -2421,13 +2441,13 @@ static int __cow_write_header(struct cow_manager *cm, int is_clean){
 
 static int __cow_open_header(struct cow_manager *cm, int index_only, int reset_vmalloc){
 	int ret;
-	struct cow_header *ch = kzalloc(SECTOR_SIZE, GFP_KERNEL);
+	struct cow_header *ch = kzalloc(COW_HEADER_SIZE, GFP_KERNEL);
 	if (!ch) {
 		LOG_ERROR(-ENOMEM, "allocation failed");
 		return -ENOMEM;
 	}
 
-	ret = file_read_block(cm->dev, ch, 0, 1);
+	ret = file_read(cm, ch, 0, COW_HEADER_SIZE);
 	if(ret) goto error;
 
 	if(ch->magic != COW_MAGIC){
@@ -3026,7 +3046,7 @@ static int __cow_write_data(struct cow_manager *cm, void *buf){
 		goto error;
 	}
 
-	ret = file_write_block(cm->dev, buf, curr_offset, SECTORS_PER_BLOCK);
+	ret = file_write(cm, buf, curr_offset, COW_BLOCK_SIZE);
 	if(ret) goto error;
 
 	cm->curr_pos++;
@@ -3070,7 +3090,7 @@ static int cow_read_data(struct cow_manager *cm, void *out_buf, uint64_t block_p
 
 	if(block_off >= COW_BLOCK_SIZE) return -EINVAL;
 
-	ret = file_read_block(cm->dev, read_buf, (block_pos * COW_BLOCK_SIZE), SECTORS_PER_BLOCK);
+	ret = file_read(cm, read_buf, (block_pos * COW_BLOCK_SIZE), COW_BLOCK_SIZE);
 	if(ret){
 		LOG_ERROR(ret, "error reading cow data");
 		kfree(read_buf);
