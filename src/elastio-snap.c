@@ -1981,8 +1981,9 @@ static inline ssize_t elastio_snap_kernel_read(struct cow_manager *cm, void *buf
 		return ret;
 #endif
 	} else {
-		WARN_ON(count % SECTOR_SIZE != 0);
-		LOG_DEBUG("reading %lu sectors...", count / SECTOR_SIZE);
+		WARN_ON(count % SECTOR_SIZE != 0 || count < SECTOR_SIZE);
+		LOG_DEBUG("DIO: reading %lu sectors...", count / SECTOR_SIZE);
+
 		ret = file_read_block(cm->dev, buf, *pos, count / SECTOR_SIZE);
 		if (!ret) ret = count;
 
@@ -2015,8 +2016,9 @@ static inline ssize_t elastio_snap_kernel_write(struct cow_manager *cm, void *bu
 		return ret;
 #endif
 	} else {
-		WARN_ON(count % SECTOR_SIZE != 0);
-		LOG_DEBUG("writing %lu sectors...", count / SECTOR_SIZE);
+		WARN_ON(count % SECTOR_SIZE != 0 || count < SECTOR_SIZE);
+		LOG_DEBUG("DIO: writing %lu sectors...", count / SECTOR_SIZE);
+
 		ret = file_write_block(cm->dev, buf, *pos, count / SECTOR_SIZE);
 		if (!ret) ret = count;
 
@@ -2166,7 +2168,7 @@ static int real_fallocate(struct file *f, uint64_t offset, uint64_t length){
 }
 #endif
 
-static int file_allocate(struct snap_device *dev, struct file *f, uint64_t offset, uint64_t length){
+static int file_allocate(struct cow_manager *cm, struct file *f, uint64_t offset, uint64_t length){
 	int ret = 0;
 	char *page_buf = NULL;
 	uint64_t i, write_count;
@@ -2174,18 +2176,6 @@ static int file_allocate(struct snap_device *dev, struct file *f, uint64_t offse
 	int abs_path_len;
 
 	file_get_absolute_pathname(f, &abs_path, &abs_path_len);
-
-	//try regular fallocate
-	ret = real_fallocate(f, offset, length);
-	if(ret && ret != -EOPNOTSUPP) goto error;
-	else if(!ret) goto out;
-
-	//fallocate isn't supported, fall back on writing zeros
-	if(!abs_path) {
-		LOG_WARN("fallocate is not supported for this file system, falling back on writing zeros");
-	} else {
-		LOG_WARN("fallocate is not supported for '%s', falling back on writing zeros", abs_path);
-	}
 
 	//allocate page of zeros
 	page_buf = (char *)get_zeroed_page(GFP_KERNEL);
@@ -2200,7 +2190,7 @@ static int file_allocate(struct snap_device *dev, struct file *f, uint64_t offse
 
 	//if not page aligned, write zeros to that point
 	if(offset % PAGE_SIZE != 0){
-		ret = file_write(dev->sd_cow, page_buf, offset, PAGE_SIZE - (offset % PAGE_SIZE));
+		ret = file_write(cm, page_buf, offset, PAGE_SIZE - (offset % PAGE_SIZE));
 		if(ret) goto error;
 
 		offset += PAGE_SIZE - (offset % PAGE_SIZE);
@@ -2208,11 +2198,10 @@ static int file_allocate(struct snap_device *dev, struct file *f, uint64_t offse
 
 	//write a page of zeros at a time
 	for(i = 0; i < write_count; i++){
-		ret = file_write(dev->sd_cow, page_buf, offset + (PAGE_SIZE * i), PAGE_SIZE);
+		ret = file_write(cm, page_buf, offset + (PAGE_SIZE * i), PAGE_SIZE);
 		if(ret) goto error;
 	}
 
-out:
 	file_lock(f);
 
 	if(page_buf) free_page((unsigned long)page_buf);
@@ -2543,26 +2532,6 @@ error:
 	return ret;
 }
 
-static int cow_sync_and_close(struct cow_manager *cm){
-	int ret;
-
-	ret = __cow_sync_and_free_sections(cm, 0);
-	if(ret) goto error;
-
-	ret = __cow_close_header(cm);
-	if(ret) goto error;
-
-	if(cm->filp) file_close(cm->filp);
-	cm->filp = NULL;
-
-	return 0;
-
-error:
-	LOG_ERROR(ret, "error while syncing and closing cow manager");
-	cow_free_members(cm);
-	return ret;
-}
-
 static inline void elastio_snap_mm_lock(struct mm_struct *mm)
 {
 #ifdef HAVE_MMAP_WRITE_LOCK
@@ -2745,6 +2714,29 @@ out:
 	return ret;
 }
 
+static int cow_sync_and_close(struct cow_manager *cm){
+	int ret;
+
+	ret = __cow_sync_and_free_sections(cm, 0);
+	if(ret) goto error;
+
+	ret = __cow_close_header(cm);
+	if(ret) goto error;
+
+	ret = elastio_snap_get_cow_file_extents(cm->dev, cm->filp);
+	if(ret) goto error;
+
+	if(cm->filp) file_close(cm->filp);
+	cm->filp = NULL;
+
+	return 0;
+
+error:
+	LOG_ERROR(ret, "error while syncing and closing cow manager");
+	cow_free_members(cm);
+	return ret;
+}
+
 static int cow_reopen(struct cow_manager *cm, const char *pathname){
 	int ret;
 
@@ -2753,9 +2745,6 @@ static int cow_reopen(struct cow_manager *cm, const char *pathname){
 	if(ret) goto error;
 
 	cm->dev->sd_cow_inode = cm->filp->f_inode;
-
-	ret = elastio_snap_get_cow_file_extents(cm->dev, cm->filp);
-	if (ret) goto error;
 
 	LOG_DEBUG("opening cow header");
 	ret = __cow_open_header(cm, (cm->flags & (1 << COW_INDEX_ONLY)), 0);
@@ -2800,9 +2789,6 @@ static int cow_reload(struct snap_device *dev, const char *path, uint64_t elemen
 	cm->data_offset = COW_HEADER_SIZE + (cm->total_sects * (sect_size * sizeof(uint64_t)));
 	dev->sd_cow_inode = cm->filp->f_inode;
 	cm->dev = dev;
-
-	ret = elastio_snap_get_cow_file_extents(dev, cm->filp);
-	if (ret) goto error;
 
 	ret = __cow_open_header(cm, index_only, 1);
 	if(ret) goto error;
@@ -2917,11 +2903,8 @@ static int cow_init(struct snap_device *dev, const char *path, uint64_t elements
 	}
 
 	LOG_DEBUG("allocating cow file (%llu bytes)", (unsigned long long)file_max);
-	ret = file_allocate(cm->dev, cm->filp, 0, file_max);
+	ret = file_allocate(cm, cm->filp, 0, file_max);
 	if(ret) goto error;
-
-	ret = elastio_snap_get_cow_file_extents(dev, cm->filp);
-	if (ret) goto error;
 
 	dev->sd_cow_inode = cm->filp->f_inode;
 
@@ -5004,6 +4987,7 @@ static void __tracer_destroy_tracing(struct snap_device *dev){
 			if (!test_bit(ACTIVE, &dev->sd_state)) {
 				int ret = 0;
 				LOG_DEBUG("flushing bio requests");
+
 				if (!test_bit(SNAPSHOT, &dev->sd_state)) {
 					ret = __tracer_setup_inc_cow_thread(dev, dev->sd_minor);
 				} else {
