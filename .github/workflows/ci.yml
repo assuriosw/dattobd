@@ -33,7 +33,7 @@ jobs:
           amazon2, amazon2023,
           centos7, centos8, centos9,
           debian8, debian9, debian10, debian11,
-          fedora31, fedora32, fedora34, fedora35, fedora36, fedora37,
+          fedora31, fedora32, fedora34, fedora35, fedora36, fedora37, fedora38,
           ubuntu2004, ubuntu2204
         ]
         arch: [ amd64 ]
@@ -53,6 +53,8 @@ jobs:
           - distro: fedora36
             arch: arm64
           - distro: fedora37
+            arch: arm64
+          - distro: fedora38
             arch: arm64
           - distro: ubuntu2204
             arch: arm64
