@@ -307,3 +307,7 @@ def test_track(test_name, started):
             f.write('<6>--- {} started ---'.format(test_name))
         else:
             f.write('<6>--- {} done. ---'.format(test_name))
+
+def os_page_size():
+    cmd = ["getconf", "PAGESIZE"]
+    return (int)(subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8"))

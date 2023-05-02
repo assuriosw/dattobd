@@ -2187,6 +2187,7 @@ static int file_allocate(struct cow_manager *cm, struct file *f, uint64_t offset
 
 	//may write up to a page too much, ok for our use case
 	write_count = NUM_SEGMENTS(length, PAGE_SHIFT);
+	LOG_DEBUG("allocating cow file (%llu bytes)", PAGE_SIZE * write_count);
 
 	//if not page aligned, write zeros to that point
 	if(offset % PAGE_SIZE != 0){
@@ -2883,7 +2884,6 @@ static int cow_init(struct snap_device *dev, const char *path, uint64_t elements
 	cm->allowed_sects = __cow_calculate_allowed_sects(cache_size, cm->total_sects);
 	cm->data_offset = COW_HEADER_SIZE + (cm->total_sects * (sect_size * sizeof(uint64_t)));
 	cm->curr_pos = cm->data_offset / COW_BLOCK_SIZE;
-	cm->file_max = file_max + cm->data_offset; // reserve additional room for sections
 	cm->dev = dev;
 
 	if(uuid) memcpy(cm->uuid, uuid, COW_UUID_SIZE);
@@ -2902,7 +2902,6 @@ static int cow_init(struct snap_device *dev, const char *path, uint64_t elements
 		}
 	}
 
-	LOG_DEBUG("allocating cow file (%llu bytes)", (unsigned long long)file_max);
 	ret = file_allocate(cm, cm->filp, 0, file_max);
 	if(ret) goto error;
 
