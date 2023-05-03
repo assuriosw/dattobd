@@ -73,7 +73,7 @@ class TestSetup(DeviceTestCase):
 
         page_size = util.os_page_size()
         cow_file_size_factor = 0.1 # 10% by default if `fallocated_space` is 0
-        cow_file_size = util.dev_size_mb(self.device) * 1024 * 1024 * cow_file_size_factor
+        cow_file_size = util.dev_size_bytes(self.device) * cow_file_size_factor
 
         # rounding up aligned to the PAGE_SIZE
         cow_file_size = int(math.ceil(cow_file_size / page_size) * page_size);
