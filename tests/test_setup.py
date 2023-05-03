@@ -73,9 +73,10 @@ class TestSetup(DeviceTestCase):
 
         page_size = util.os_page_size()
         cow_file_size_factor = 0.1 # 10% by default if `fallocated_space` is 0
-        cow_size_bytes = util.dev_size_mb(self.device) * 1024 * 1024 * cow_file_size_factor
-        cow_file_size = (int)(round(cow_size_bytes / page_size) * page_size);
+        cow_file_size = util.dev_size_mb(self.device) * 1024 * 1024 * cow_file_size_factor
 
+        # rounding up aligned to the PAGE_SIZE
+        cow_file_size = int(math.ceil(cow_file_size / page_size) * page_size);
         self.assertEqual(os.stat(self.cow_full_path).st_size, cow_file_size)
 
     def test_setup_check_cow_size_fallocate(self):
@@ -83,9 +84,10 @@ class TestSetup(DeviceTestCase):
         self.addCleanup(elastio_snap.destroy, self.minor)
 
         page_size = util.os_page_size()
-        cow_size_bytes = 50 * 1024 * 1024
-        cow_file_size = (int)(round(cow_size_bytes / page_size) * page_size);
+        cow_file_size = 50 * 1024 * 1024
 
+        # rounding up aligned to the PAGE_SIZE
+        cow_file_size = int(math.ceil(cow_file_size / page_size) * page_size);
         self.assertEqual(os.stat(self.cow_full_path).st_size, cow_file_size)
 
     def test_setup_volume(self):
