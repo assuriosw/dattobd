@@ -79,6 +79,9 @@ class TestSetup(DeviceTestCase):
         cow_file_size = int(math.ceil(cow_file_size / page_size) * page_size);
         self.assertEqual(os.stat(self.cow_full_path).st_size, cow_file_size)
 
+        snapdev = elastio_snap.info(self.minor)
+        self.assertEqual(snapdev["falloc_size"], cow_file_size)
+
     def test_setup_check_cow_size_fallocate(self):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path, fallocated_space=50), 0)
         self.addCleanup(elastio_snap.destroy, self.minor)
@@ -89,6 +92,9 @@ class TestSetup(DeviceTestCase):
         # rounding up aligned to the PAGE_SIZE
         cow_file_size = int(math.ceil(cow_file_size / page_size) * page_size);
         self.assertEqual(os.stat(self.cow_full_path).st_size, cow_file_size)
+
+        snapdev = elastio_snap.info(self.minor)
+        self.assertEqual(snapdev["falloc_size"], cow_file_size)
 
     def test_setup_volume(self):
         self.assertEqual(elastio_snap.setup(self.minor, self.device, self.cow_full_path), 0)

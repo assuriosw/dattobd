@@ -4625,11 +4625,13 @@ static int __tracer_setup_cow(struct snap_device *dev, struct block_device *bdev
 			if(!fallocated_space){
 				max_file_size = size * SECTOR_SIZE * elastio_snap_cow_fallocate_percentage_default;
 				do_div(max_file_size, 100);
-				dev->sd_falloc_size = max_file_size;
-				do_div(dev->sd_falloc_size, (1024 * 1024));
+				max_file_size = ALIGN(max_file_size, PAGE_SIZE);
 			}else{
-				max_file_size = fallocated_space * (1024 * 1024);
+				max_file_size = ALIGN(fallocated_space * (1024 * 1024), PAGE_SIZE);
 			}
+
+			dev->sd_falloc_size = max_file_size;
+			do_div(dev->sd_falloc_size, (1024 * 1024));
 
 			//create and open the cow manager
 			LOG_DEBUG("creating cow manager");
