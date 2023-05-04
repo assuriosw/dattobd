@@ -234,10 +234,10 @@ jobs:
 
       - name: Attach qcow2 disks
         run: |
+          SZ="2G"
           ARCH=$(uname -m)
           TEST_IMAGES=(${TEST_IMAGES})
           TEST_DRIVES=(${TEST_DRIVES})
-          [ ${ARCH} == "x86_64" ] && SZ="2G" || SZ="512M"
           [ ${ARCH} != "x86_64" ] && VIRSH_FLAGS="--config" || true
           for i in ${!TEST_IMAGES[*]}; do
             qemu-img create -f qcow2 ${TEST_IMAGES[i]} $SZ
