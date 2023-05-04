@@ -234,7 +234,7 @@ jobs:
 
       - name: Attach qcow2 disks
         run: |
-          SZ="2G"
+          SZ="1G"
           ARCH=$(uname -m)
           TEST_IMAGES=(${TEST_IMAGES})
           TEST_DRIVES=(${TEST_DRIVES})

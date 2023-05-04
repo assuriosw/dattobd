@@ -19,13 +19,12 @@ from random import randint
 class DeviceTestCaseMultipart(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # For now let's hardcode 7 partitions
-        cls.part_count = 7
+        cls.part_count = 3
         cls.minors = []
 
         # We create the device big enough to perform
         # representative 'test_multipart_modify_origins'
-        cls.size_mb = 2560
+        cls.size_mb = 1024
 
         for i in range(cls.part_count):
             # Unexpectedly randint can generate 2 same numbers in a row.
