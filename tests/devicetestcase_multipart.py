@@ -41,7 +41,7 @@ class DeviceTestCaseMultipart(unittest.TestCase):
             util.partition(cls.device, cls.part_count)
         else:
             cls.backing_store = ("/tmp/disk_{0:03d}.img".format(cls.minors[0]))
-            util.dd("/dev/zero", cls.backing_store, 256, bs="1M")
+            util.dd("/dev/zero", cls.backing_store, 2560, bs="1M")
             cls.device = util.loop_create(cls.backing_store, cls.part_count)
 
         cls.devices = []

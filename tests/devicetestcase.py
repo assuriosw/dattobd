@@ -41,7 +41,7 @@ class DeviceTestCase(unittest.TestCase):
                     if not r in seeds: break
                 seeds.append(r)
                 cls.backing_stores.append("/tmp/disk_{0:03d}.img".format(seeds[i]))
-                util.dd("/dev/zero", cls.backing_stores[i], 256, bs="1M")
+                util.dd("/dev/zero", cls.backing_stores[i], 512, bs="1M")
                 cls.devices.append(util.loop_create(cls.backing_stores[i]))
 
         if len(cls.devices) == 1:
