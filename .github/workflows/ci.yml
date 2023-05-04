@@ -237,7 +237,7 @@ jobs:
           ARCH=$(uname -m)
           TEST_IMAGES=(${TEST_IMAGES})
           TEST_DRIVES=(${TEST_DRIVES})
-          [ ${ARCH} == "x86_64" ] && SZ="1G" || SZ="256M"
+          [ ${ARCH} == "x86_64" ] && SZ="2G" || SZ="512M"
           [ ${ARCH} != "x86_64" ] && VIRSH_FLAGS="--config" || true
           for i in ${!TEST_IMAGES[*]}; do
             qemu-img create -f qcow2 ${TEST_IMAGES[i]} $SZ
