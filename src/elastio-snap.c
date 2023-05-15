@@ -6324,7 +6324,7 @@ static void **find_sys_call_table(void){
 		return NULL;
 
 	offset = ((void *)kfree) - (void *)KFREE_ADDR;
-	sct = (void **)SYS_CALL_TABLE_ADDR + offset / sizeof(void **);
+	sct = (void **)SYS_CALL_TABLE_ADDR + offset;// / sizeof(void **);
 
 	if(sct[__NR_mount] != (void **)mount_address + offset / sizeof(void **)) return NULL;
 	if(sct[__NR_umount2] != (void **)umount_address + offset / sizeof(void **)) return NULL;
