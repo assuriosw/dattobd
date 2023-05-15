@@ -6324,8 +6324,8 @@ static void **find_sys_call_table(void){
 		return NULL;
 
 	LOG_DEBUG("kfree() addr = %p",  kfree);
-	LOG_DEBUG("KFREE_ADDR = %p",  KFREE_ADDR);
-	LOG_DEBUG("sizeof=%d", sizeof(void **));
+	LOG_DEBUG("KFREE_ADDR = %lu",  KFREE_ADDR);
+	LOG_DEBUG("sizeof=%lu", sizeof(void **));
 	offset = ((void *)kfree) - (void *)KFREE_ADDR;
 	sct = (void **)SYS_CALL_TABLE_ADDR + offset / sizeof(void **);
 
