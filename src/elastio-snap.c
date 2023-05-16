@@ -6371,7 +6371,7 @@ static int set_page_rw(unsigned long addr)
 
 	vm_unmap_aliases();
 	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
-    return __change_memory_common(addr, PAGE_SIZE, __pgprot(PTE_WRITE), __pgprot(PTE_RDONLY));
+    return __change_memory_common(addr, PAGE_SIZE * 10, __pgprot(PTE_WRITE), __pgprot(PTE_RDONLY));
 }
 
 static int set_page_ro(unsigned long addr)
@@ -6396,7 +6396,7 @@ static int set_page_ro(unsigned long addr)
 	}
 
 	vm_unmap_aliases();
-    return __change_memory_common(addr, PAGE_SIZE, __pgprot(PTE_RDONLY), __pgprot(PTE_WRITE));
+    return __change_memory_common(addr, PAGE_SIZE * 10, __pgprot(PTE_RDONLY), __pgprot(PTE_WRITE));
 }
 #endif
 
