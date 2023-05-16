@@ -6437,7 +6437,7 @@ static inline int syscall_mode_rw(void **syscall_table, int syscall_num, unsigne
 	return 0;
 #elif defined(CONFIG_ARM64)
 	LOG_DEBUG("syscall_num=%d", syscall_num);
-	return set_page_rw((unsigned long) (syscall_table + syscall_num));
+	return set_page_rw((unsigned long) (syscall_table));// + syscall_num));
 #else
 	return -EOPNOTSUPP;
 #endif
@@ -6449,7 +6449,7 @@ static inline long syscall_mode_ro(void **syscall_table, int syscall_num, unsign
 #if defined(CONFIG_X86_64)
 	reenable_page_protection(flags);
 #elif defined(CONFIG_ARM64)
-	return set_page_ro((unsigned long) (syscall_table + syscall_num));
+	return set_page_ro((unsigned long) (syscall_table));// + syscall_num));
 #else
 	return -EOPNOTSUPP;
 #endif
