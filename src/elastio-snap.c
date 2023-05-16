@@ -6431,17 +6431,23 @@ static inline int syscall_set_hook(void **syscall_table,
 	int ret;
 	unsigned long flags;
 
+	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 	ret = syscall_mode_rw(syscall_table, syscall_num, &flags);
 	if (ret) {
 		LOG_ERROR(ret, "failed to switch the system call table to the read-write mode");
 		return ret;
 	}
+	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 
+	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 	if (orig_hook)
 		*orig_hook = syscall_table[syscall_num];
+	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 
 	syscall_table[syscall_num] = new_hook;
+	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 	syscall_mode_ro(syscall_table, syscall_num, flags);
+	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 
 	return 0;
 }
@@ -6481,10 +6487,14 @@ static int hook_system_call_table(void)
 
 	preempt_disable();
 	//break into the syscall table and steal the hooks we need
+	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 	ret = syscall_set_hook(system_call_table, __NR_mount, (void **) &orig_mount, mount_hook);
+	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 	ret |= syscall_set_hook(system_call_table, __NR_umount2, (void **) &orig_umount, umount_hook);
+	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 #ifdef HAVE_SYS_OLDUMOUNT
 	ret |= syscall_set_hook(system_call_table, __NR_umount, (void **) &orig_oldumount, oldumount_hook);
+	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 #endif
 	preempt_enable();
 
