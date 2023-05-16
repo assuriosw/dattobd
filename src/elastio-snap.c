@@ -6354,7 +6354,12 @@ static int set_page_rw(unsigned long addr)
 	}
 	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 
-    /* vm_unmap_aliases(); */
+	if (!PAGE_ALIGNED(addr)) {
+		addr &= PAGE_MASK;
+		WARN_ON_ONCE(1);
+	}
+
+	vm_unmap_aliases();
 	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
     return __change_memory_common(addr, PAGE_SIZE, __pgprot(PTE_WRITE), __pgprot(PTE_RDONLY));
 }
@@ -6369,8 +6374,11 @@ static int set_page_ro(unsigned long addr)
 		LOG_ERROR(-EFAULT, "error getting __change_memory_common address");
 		return -EFAULT;
 	}
-
-    /* vm_unmap_aliases(); */
+	if (!PAGE_ALIGNED(addr)) {
+		addr &= PAGE_MASK;
+		WARN_ON_ONCE(1);
+	}
+	vm_unmap_aliases();
     return __change_memory_common(addr, PAGE_SIZE, __pgprot(PTE_RDONLY), __pgprot(PTE_WRITE));
 }
 #endif
