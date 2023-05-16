@@ -196,7 +196,7 @@ jobs:
 
       - name: Show debug information
         if: always()
-        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "cat src/kernel-config.h; cat tests/dmesg.log; sudo dmesg -c; lsmod"
+        run: vagrant ssh ${{env.INSTANCE_NAME}} -c "cat src/kernel-config.h; cat /boot/config-5.19.0-41-generic | grep -i syscall; cat tests/dmesg.log; sudo dmesg -c; lsmod"
         working-directory: ${{env.BOX_DIR}}
         timeout-minutes: 2
 

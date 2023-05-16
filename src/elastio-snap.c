@@ -6328,6 +6328,7 @@ static void **find_sys_call_table(void){
 	LOG_DEBUG("sizeof=%lu", sizeof(void **));
 	offset = ((void *)kfree) - (void *)KFREE_ADDR;
 	sct = (void **)SYS_CALL_TABLE_ADDR + offset / sizeof(void **);
+	LOG_DEBUG("sct addr = %p",  sct);
 
 	if(sct[__NR_mount] != (void **)mount_address + offset / sizeof(void **)) return NULL;
 	if(sct[__NR_umount2] != (void **)umount_address + offset / sizeof(void **)) return NULL;
@@ -6435,6 +6436,7 @@ static inline int syscall_mode_rw(void **syscall_table, int syscall_num, unsigne
 	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 	return 0;
 #elif defined(CONFIG_ARM64)
+	LOG_DEBUG("syscall_num=%d", syscall_num);
 	return set_page_rw((unsigned long) (syscall_table + syscall_num));
 #else
 	return -EOPNOTSUPP;
