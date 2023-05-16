@@ -6354,12 +6354,13 @@ static int set_page_rw(unsigned long addr)
 	}
 	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 
-	LOG_DEBUG();
+	LOG_DEBUG("addr was %p", addr);
 	if (!PAGE_ALIGNED(addr)) {
 		addr &= PAGE_MASK;
-		WARN_ON_ONCE(1);
+		/* WARN_ON_ONCE(1); */
 	}
 
+	LOG_DEBUG("addr is now %p", addr);
 	if (!PAGE_ALIGNED(addr)) {
 		LOG_DEBUG("STILL NOT OK!!!!!!!");
 	} else {
@@ -6368,7 +6369,7 @@ static int set_page_rw(unsigned long addr)
 
 	vm_unmap_aliases();
 	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
-    return __change_memory_common(addr, PAGE_SIZE, __pgprot(PTE_WRITE), __pgprot(PTE_RDONLY));
+    return __change_memory_common(addr, PAGE_SIZE, __pgprot(PTE_WRITE | PTE_VALID), __pgprot(PTE_RDONLY));
 }
 
 static int set_page_ro(unsigned long addr)
