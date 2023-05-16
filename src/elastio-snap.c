@@ -6347,12 +6347,15 @@ static int set_page_rw(unsigned long addr)
 			pgprot_t, pgprot_t) = (__CHANGE_MEMORY_COMMON_ADDR != 0) ?
         (int (*)(unsigned long, unsigned long, pgprot_t, pgprot_t)) (__CHANGE_MEMORY_COMMON_ADDR + (long long)(((void *)kfree) - (void *)KFREE_ADDR)) : NULL;
 
+	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 	if (!__change_memory_common) {
 		LOG_ERROR(-EFAULT, "error getting __change_memory_common address");
 		return -EFAULT;
 	}
+	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 
-    vm_unmap_aliases();
+    /* vm_unmap_aliases(); */
+	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
     return __change_memory_common(addr, PAGE_SIZE, __pgprot(PTE_WRITE), __pgprot(PTE_RDONLY));
 }
 
@@ -6367,7 +6370,7 @@ static int set_page_ro(unsigned long addr)
 		return -EFAULT;
 	}
 
-    vm_unmap_aliases();
+    /* vm_unmap_aliases(); */
     return __change_memory_common(addr, PAGE_SIZE, __pgprot(PTE_RDONLY), __pgprot(PTE_WRITE));
 }
 #endif
@@ -6403,7 +6406,9 @@ static inline int syscall_mode_rw(void **syscall_table, int syscall_num, unsigne
 	if (!flags) return -EINVAL;
 
 #if defined(CONFIG_X86_64)
+	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 	*flags = disable_page_protection();
+	LOG_DEBUG("%s(), line %d", __func__, __LINE__);
 	return 0;
 #elif defined(CONFIG_ARM64)
 	return set_page_rw((unsigned long) (syscall_table + syscall_num));
