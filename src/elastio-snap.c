@@ -1066,6 +1066,8 @@ struct snap_device{
 	atomic64_t sd_submitted_cnt; //count of read clones submitted to underlying driver
 	atomic64_t sd_received_cnt; //count of read clones submitted to underlying driver
 	atomic64_t sd_processed_cnt; //count of read clones processed in snap_cow_thread()
+	atomic64_t sd_submitted_bytes;
+	atomic64_t sd_processed_bytes;
 };
 
 static long ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
@@ -2181,6 +2183,20 @@ static int file_allocate(struct cow_manager *cm, struct file *f, uint64_t offset
 
 	file_get_absolute_pathname(f, &abs_path, &abs_path_len);
 
+	//try regular fallocate
+	ret = real_fallocate(f, offset, length);
+	if(ret && ret != -EOPNOTSUPP) goto error;
+	else if(!ret) goto out;
+
+	file_lock(f);
+
+	//fallocate isn't supported, fall back on writing zeros
+	if(!abs_path) {
+		LOG_WARN("fallocate is not supported for this file system, falling back on writing zeros");
+	} else {
+		LOG_WARN("fallocate is not supported for '%s', falling back on writing zeros", abs_path);
+	}
+
 	//allocate page of zeros
 	page_buf = (char *)get_zeroed_page(GFP_KERNEL);
 	if(!page_buf){
@@ -2207,6 +2223,7 @@ static int file_allocate(struct cow_manager *cm, struct file *f, uint64_t offset
 		if(ret) goto error;
 	}
 
+out:
 	file_lock(f);
 
 	if(page_buf) free_page((unsigned long)page_buf);
@@ -2344,6 +2361,39 @@ static int __cow_write_section(struct cow_manager *cm, unsigned long sect_idx){
 	return 0;
 }
 
+static int __cow_file_extents_zero_fill_ahead(struct cow_manager *cm)
+{
+	int ret;
+	char *buf;
+	uint64_t curr_size = cm->curr_pos * COW_BLOCK_SIZE;
+	uint64_t write_ahead = atomic64_read(&cm->dev->sd_processed_bytes) -
+		atomic64_read(&cm->dev->sd_submitted_bytes);
+
+	if (!write_ahead)
+		return 0;
+
+	buf = kmalloc(write_ahead, GFP_KERNEL);
+	if(!buf){
+		ret = -ENOMEM;
+		LOG_ERROR(ret, "error allocating buffer");
+		return ret;
+	}
+
+	/* This covers the case when the module is removed in the dormant state.
+	 * In such a case, the direct write to the COW file takes place to write
+	 * the rest of bio requests which have not been processed yet. However,
+	 * it may (and likely will) happen that the COW file extents, which is
+	 * being used for the direct write, aren't initialized by the FS. Hence,
+	 * if we simply write there, there's no chance this data will be available
+	 * at the next volume mount. To make this possible, we write some data ahead
+	 * to ensure the extent is valid during the direct write operation.
+	 */
+	ret = file_write(cm, buf, curr_size, COW_BLOCK_SIZE);
+	kfree(buf);
+
+	return ret;
+}
+
 static int __cow_sync_and_free_sections(struct cow_manager *cm, unsigned long thresh){
 	int ret;
 	unsigned long i;
@@ -2359,6 +2409,11 @@ static int __cow_sync_and_free_sections(struct cow_manager *cm, unsigned long th
 			__cow_free_section(cm, i);
 		}
 		cm->sects[i].usage = 0;
+	}
+
+	if (__cow_file_extents_zero_fill_ahead(cm)) {
+		LOG_ERROR(-EIO, "couldn't prepare cow file extents, data may be corrupted");
+		return -EIO;
 	}
 
 	return 0;
@@ -3652,6 +3707,7 @@ static int snap_handle_write_bio(const struct snap_device *dev, struct bio *bio)
 		data = kmap(bvec->bv_page);
 		//loop through the blocks in the page
 		for(; start_block < end_block; start_block++){
+			atomic64_add(COW_BLOCK_SIZE, (atomic64_t *) &dev->sd_processed_bytes);
 			//pass the block to the cow manager to be handled
 			ret = cow_write_current(dev->sd_cow, start_block, data);
 			if(ret){
@@ -4010,6 +4066,7 @@ retry:
 	ret = tp_add(tp, new_bio);
 	if (ret) goto error;
 
+	atomic64_add(bytes, &dev->sd_submitted_bytes);
 	atomic64_inc(&dev->sd_submitted_cnt);
 	smp_wmb();
 
@@ -4911,6 +4968,8 @@ static int __tracer_setup_snap(struct snap_device *dev, unsigned int minor, stru
 	atomic64_set(&dev->sd_submitted_cnt, 0);
 	atomic64_set(&dev->sd_received_cnt, 0);
 	atomic64_set(&dev->sd_processed_cnt, 0);
+	atomic64_set(&dev->sd_processed_bytes, 0);
+	atomic64_set(&dev->sd_submitted_bytes, 0);
 
 	return 0;
 
