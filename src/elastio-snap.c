@@ -2378,8 +2378,8 @@ static int __cow_file_extents_zero_fill_ahead(struct cow_manager *cm)
 	 * it may (and likely will) happen that the COW file extents, which is
 	 * being used for the direct write, aren't initialized by the FS. Hence,
 	 * if we simply write there, there's no chance this data will be available
-	 * at the next volume mount. To make this possible, we write some data ahead
-	 * to ensure the extent is valid during the direct write operation.
+	 * at the next volume mount. To make this possible, we write some data
+	 * ahead to ensure the extent is valid during the direct write operation
 	 */
 	ret = file_write(cm, buf, curr_size, write_ahead);
 	kfree(buf);
@@ -3068,7 +3068,9 @@ static int __cow_write_data(struct cow_manager *cm, void *buf){
 	if(curr_size >= cm->file_max) {
 		ret = -EFBIG;
 
-		file_get_absolute_pathname(cm->filp, &abs_path, &abs_path_len);
+		if (cm->filp)
+			file_get_absolute_pathname(cm->filp, &abs_path, &abs_path_len);
+
 		if(!abs_path){
 			LOG_ERROR(ret, "cow file max size exceeded (%llu/%llu)", curr_size, cm->file_max);
 		}else{
@@ -4619,13 +4621,13 @@ static int __tracer_destroy_cow(struct snap_device *dev, int close_method){
 		kfree(dev->sd_cow_extents);
 		dev->sd_cow_extents = NULL;
 		dev->sd_cow_ext_cnt = 0;
+		dev->sd_cow_inode = NULL;
 	} else {
 		LOG_DEBUG("preserving cow file extents");
 	}
 
 	dev->sd_falloc_size = 0;
 	dev->sd_cache_size = 0;
-	dev->sd_cow_inode = NULL;
 
 	return ret;
 }
