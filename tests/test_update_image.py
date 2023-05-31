@@ -37,7 +37,7 @@ class TestUpdateImage(DeviceTestCase):
         self.addCleanup(elastio_snap.destroy, self.minor)
 
         # preparing base image
-        util.dd(self.snap_device, self.snap_bkp, util.dev_size_mb(self.snap_device), bs="1M")
+        util.dd(self.snap_device, self.snap_bkp, self.size_mb, bs="1M")
         self.addCleanup(os.remove, self.snap_bkp)
         write_testfile = "{}/{}".format(self.mount, file_name)
 
