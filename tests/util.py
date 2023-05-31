@@ -52,7 +52,7 @@ def dd(ifile, ofile, count, **kwargs):
 
 
 def update_img(device, cow_file, bkp):
-    cmd = ["update-img", device, cow_file, bkp]
+    cmd = ["../utils/update-img", device, cow_file, bkp]
     ret = subprocess.run(cmd, timeout=180, stdout=subprocess.DEVNULL)
     return ret.returncode
 
