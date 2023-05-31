@@ -6,7 +6,6 @@
 # Additional contributions by Elastio Software, Inc are Copyright (C) 2020 Elastio Software Inc.
 #
 
-import time
 import math
 import errno
 import os
