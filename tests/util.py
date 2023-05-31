@@ -51,6 +51,21 @@ def dd(ifile, ofile, count, **kwargs):
     subprocess.check_call(cmd, timeout=240)
 
 
+def update_img(device, cow_file, bkp):
+    cmd = ["update-img", device, cow_file, bkp]
+    ret = subprocess.run(cmd, timeout=180, stdout=subprocess.DEVNULL)
+    return ret.returncode
+
+def mktemp_dir():
+    cmd = ["mktemp", "-d"]
+    temp_dir = subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8")
+    return temp_dir
+
+def file_lines(file):
+    cmd = ["wc", "-l", file]
+    lines = int(subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8").split(" ")[0])
+    return lines
+
 def md5sum(path):
     md5 = hashlib.md5()
     with open(path, "rb") as f:
@@ -122,6 +137,15 @@ def mkfs(device, fs="ext4"):
 
     subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
 
+
+def fsck(image, fs="ext4"):
+    if fs == 'xfs':
+        cmd = ["xfs_repair", "-n", "-v", image]
+    else:
+        cmd = ["fsck." + fs, "-n", "-f", "-v", image]
+
+    ret = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+    return ret.returncode
 
 def dev_size_mb(device):
     return int(subprocess.check_output("blockdev --getsize64 %s" % device, shell=True))//1024**2
