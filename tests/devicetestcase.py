@@ -30,7 +30,7 @@ class DeviceTestCase(unittest.TestCase):
         if os.getenv('TEST_DEVICES'):
             cls.devices = os.getenv('TEST_DEVICES').split()
             for device in cls.devices:
-                cls.size_mb = util.dev_size_mb(devices)
+                cls.size_mb = util.dev_size_mb(device)
                 util.dd("/dev/zero", device, cls.size_mb, bs="1M")
         else:
             dev_count = 2 if os.getenv('LVM') or os.getenv('RAID') else 1
