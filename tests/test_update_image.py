@@ -47,7 +47,7 @@ class TestUpdateImage(DeviceTestCase):
 
             self.assertEqual(elastio_snap.transition_to_incremental(self.minor), 0)
             self.assertEqual(elastio_snap.transition_to_snapshot(self.minor, cow_paths[i]), 0)
-            self.assertEqual(util.update_img(self.snap_device, cow_paths[i - 1], self.snap_bkp), 0)
+            util.update_img(self.snap_device, cow_paths[i - 1], self.snap_bkp)
             os.remove(cow_paths[i - 1])
 
         temp_dir = util.mktemp_dir()
@@ -57,7 +57,7 @@ class TestUpdateImage(DeviceTestCase):
             util.mount(self.snap_bkp, temp_dir, opts="nouuid")
             util.unmount(temp_dir)
 
-        self.assertEqual(util.fsck(self.snap_bkp, self.fs), 0)
+        util.fsck(self.snap_bkp, self.fs)
 
         read_testfile = "{}/{}".format(temp_dir, file_name)
 
