@@ -47,6 +47,9 @@ class TestUpdateImage(DeviceTestCase):
 
             self.assertEqual(elastio_snap.transition_to_incremental(self.minor), 0)
             self.assertEqual(elastio_snap.transition_to_snapshot(self.minor, cow_paths[i]), 0)
+
+            os.sync()
+
             util.update_img(self.snap_device, cow_paths[i - 1], self.snap_bkp)
             os.remove(cow_paths[i - 1])
 
