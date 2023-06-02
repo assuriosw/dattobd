@@ -53,11 +53,14 @@ class TestUpdateImage(DeviceTestCase):
         temp_dir = util.mktemp_dir()
         self.addCleanup(os.rmdir, temp_dir)
 
+        loop_dev = util.loop_create(self.snap_bkp)
+        self.addCleanup(util.loop_destroy, loop_dev)
+
         if self.fs == 'xfs':
             util.mount(self.snap_bkp, temp_dir, opts="nouuid")
             util.unmount(temp_dir)
 
-        util.fsck(self.snap_bkp, self.fs)
+        util.fsck(loop_dev, self.fs)
 
         read_testfile = "{}/{}".format(temp_dir, file_name)
 
