@@ -60,7 +60,7 @@ class TestUpdateImage(DeviceTestCase):
         self.addCleanup(util.loop_destroy, loop_dev)
 
         if self.fs == 'xfs':
-            util.mount(self.snap_bkp, temp_dir, opts="nouuid")
+            util.mount(loop_dev, temp_dir, opts="nouuid")
             util.unmount(temp_dir)
 
         util.fsck(loop_dev, self.fs)
@@ -68,9 +68,9 @@ class TestUpdateImage(DeviceTestCase):
         read_testfile = "{}/{}".format(temp_dir, file_name)
 
         if self.fs == 'xfs':
-            util.mount(self.snap_bkp, temp_dir, opts="nouuid")
+            util.mount(loop_dev, temp_dir, opts="nouuid")
         else:
-            util.mount(self.snap_bkp, temp_dir)
+            util.mount(loop_dev, temp_dir)
 
         self.addCleanup(util.unmount, temp_dir)
         self.assertEqual(util.file_lines(read_testfile), iterations - 1)
