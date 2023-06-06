@@ -121,6 +121,10 @@ def mkfs(device, fs="ext4"):
 
     subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
 
+def xfs_repair_version():
+    cmd = ["xfs_repair", "-V"]
+    version = subprocess.check_output(cmd, timeout=10).rstrip().decode("utf-8").split(" ")[2]
+    return version
 
 def fsck(image, fs="ext4"):
     if fs == 'xfs':

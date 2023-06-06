@@ -60,11 +60,15 @@ class TestUpdateImage(DeviceTestCase):
         loop_dev = util.loop_create(self.snap_bkp)
         self.addCleanup(util.loop_destroy, loop_dev)
 
+        # Need to repair the xfs (see #63)
         if self.fs == 'xfs':
             util.mount(loop_dev, temp_dir, opts="nouuid")
             util.unmount(temp_dir)
 
-        util.fsck(loop_dev, self.fs)
+        # For some reason, even valid xfs file system is showed
+        # as 'not valid' with xfs_repair v4.9.0
+        if util.xfs_repair_version() != '4.9.0':
+            util.fsck(loop_dev, self.fs)
 
         read_testfile = "{}/{}".format(temp_dir, file_name)
 
