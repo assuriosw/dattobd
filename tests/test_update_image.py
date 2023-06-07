@@ -63,7 +63,7 @@ class TestUpdateImage(DeviceTestCase):
             util.mount(loop_dev, temp_dir, opts="nouuid")
             util.unmount(temp_dir)
 
-        # For some reason, even valid xfs file system is showed
+        # For some reason, even valid xfs file system is shown
         # as 'not valid' with xfs_repair v4.9.0
         if util.xfs_repair_version() != '4.9.0':
             util.fsck(loop_dev, self.fs)
