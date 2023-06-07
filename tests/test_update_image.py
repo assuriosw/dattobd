@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
 #
-# Copyright (C) 2019 Datto, Inc.
-# Additional contributions by Elastio Software, Inc are Copyright (C) 2020 Elastio Software Inc.
+# Copyright (C) 2023 Elastio Software
 #
 
 import math
@@ -19,9 +18,8 @@ from devicetestcase import DeviceTestCase
 
 class TestUpdateImage(DeviceTestCase):
     def setUp(self):
-        self.snap_mount = "/mnt"
         self.snap_device = "/dev/elastio-snap{}".format(self.minor)
-        self.snap_bkp = "./base-image.img"
+        self.snap_bkp = "./backup.img"
 
         util.test_track(self._testMethodName, started=True)
 
@@ -44,7 +42,7 @@ class TestUpdateImage(DeviceTestCase):
 
         for i in range(1, iterations):
             with open(write_testfile, "a") as f:
-                f.write("Attempt to destroy humanity #{}\n".format(i))
+                f.write("Attempt to save humanity #{}\n".format(i))
 
             self.assertEqual(elastio_snap.transition_to_incremental(self.minor), 0)
             self.assertEqual(elastio_snap.transition_to_snapshot(self.minor, cow_paths[i]), 0)
