@@ -37,6 +37,7 @@ pipeline
 					{
 						sh "bash ./build.sh ${env.BUILD_NUMBER} rpm"
 						deployRpm dir: "build-results_rpm", map_repo: pkg_map_branches('ootpa'), user: "rbrepo", agent: "agent"
+						deployRpm dir: "build-results_rpm", map_repo: pkg_map_branches('maipo'), user: "rbrepo", agent: "agent"
 					}
 				}
 			}
