@@ -321,6 +321,7 @@ jobs:
 
       - name: Uninstall kernel module
         run: vagrant ssh ${{env.INSTANCE_NAME}} -c 'sudo make uninstall'
+        working-directory: ${{env.BOX_DIR}}
 
       - name: Detach external drives
         if: always()
