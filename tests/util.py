@@ -136,7 +136,7 @@ def fsck(image, fs="ext4"):
 
 def update_img(device, cow_file, bkp):
     cmd = ["../utils/update-img", device, cow_file, bkp]
-    subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
+    subprocess.check_call(cmd, stdout=subprocess.DEVNULL, timeout=180)
 
 def mktemp_dir():
     cmd = ["mktemp", "-d"]
