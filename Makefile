@@ -31,10 +31,10 @@ endif
 driver: check_root
 	$(MAKE) -C src
 
-library-shared:
+library-shared: driver
 	$(MAKE) -C lib CCFLAGS="$(CCFLAGS) -I$(BASE_DIR)/src" shared
 
-library-static:
+library-static: driver
 	$(MAKE) -C lib CCFLAGS="$(CCFLAGS) -I$(BASE_DIR)/src" static
 
 library: library-shared library-static
