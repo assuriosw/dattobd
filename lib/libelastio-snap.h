@@ -8,7 +8,6 @@
 #ifndef LIBELASTIO_SNAP_H_
 #define LIBELASTIO_SNAP_H_
 
-#include "kernel-config.h"
 #include "elastio-snap.h"
 #include <stdbool.h>
 
