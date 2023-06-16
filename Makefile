@@ -33,7 +33,7 @@ driver: check_root
 	$(MAKE) -C src
 
 $(KERNEL_CONFIG):
-	./src/genconfig.sh "$(shell uname -r)"
+	$(BASE_DIR)/src/genconfig.sh "$(shell uname -r)"
 
 library-shared: $(KERNEL_CONFIG)
 	$(MAKE) -C lib CCFLAGS="$(CCFLAGS) -I$(BASE_DIR)/src" shared
