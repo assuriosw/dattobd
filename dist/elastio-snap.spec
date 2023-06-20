@@ -312,7 +312,9 @@ automatically build and install for each kernel.
 export CFLAGS="%{optflags}"
 make application
 make utils
-rm -rf src/kernel-config.h
+# Not needs to be installed: we expect the
+# user to generate it during the build
+rm -f src/kernel-config.h
 
 
 %install
