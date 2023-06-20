@@ -66,10 +66,10 @@ pkgprep: pkgclean
 	tar --exclude=./pkgbuild --exclude=.git --transform 's,^\.,elastio-snap,' -czf $(BUILDDIR)/SOURCES/elastio-snap.tar.gz .
 	cp dist/elastio-snap.spec $(BUILDDIR)/SPECS/elastio-snap.spec
 
-deb: pkgprep
+deb: check_root pkgprep
 	debbuild $(PKGBUILDFLAGS) $(BUILDDIR)/SPECS/elastio-snap.spec
 
-rpm: pkgprep
+rpm: check_root pkgprep
 	rpmbuild $(PKGBUILDFLAGS) $(BUILDDIR)/SPECS/elastio-snap.spec
 
 install:
