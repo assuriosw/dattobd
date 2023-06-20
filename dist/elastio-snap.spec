@@ -580,6 +580,7 @@ rm -rf %{buildroot}
 %if 0%{?rhel} == 5 && 0%{?rhel} == 6 && 0%{?suse_version} == 1110
 # RHEL/CentOS 5/6 and SLE 11 don't support this at all
 %exclude %{_sysconfdir}/modules-load.d/elastio-snap.conf
+%exclude %{_kmod_src_root}/configure-tests/feature-tests/build
 %else
 %config %{_sysconfdir}/modules-load.d/elastio-snap.conf
 %endif
