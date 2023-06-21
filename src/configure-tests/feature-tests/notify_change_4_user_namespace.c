@@ -10,10 +10,10 @@
 MODULE_LICENSE("GPL");
 
 static inline void dummy(void){
-	struct user_namespace n;
+	struct user_namespace *n;
 	struct dentry d;
 	struct iattr a;
-	struct inode *pi;
+	struct inode *i;
 
-	notify_change(&n, &d, &a, &pi);
+	notify_change(n, &d, &a, &i);
 }
