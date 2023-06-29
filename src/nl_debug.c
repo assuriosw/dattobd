@@ -4,21 +4,27 @@ struct sock *nl_sock = NULL;
 
 static void nl_recv_msg(struct sk_buff *skb)
 {
-	// TODO
+	nlmsg_free(skb);
 }
 
-void nl_send_msg(void)
+int nl_send_event(enum msg_type_t type, struct params_t *params)
 {
+	struct sk_buff *skb;
+	struct msg_header_t *msg;
 	struct nlmsghdr *nlsk_mh;
-	char* msg = "hello kernel";
 
-	struct sk_buff *skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
-	nlsk_mh = nlmsg_put(skb, 0, 0, NLMSG_DONE, strlen(msg), 0);
+	skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	nlsk_mh = nlmsg_put(skb, 0, 0, NLMSG_DONE, sizeof(struct msg_header_t), 0);
 	NETLINK_CB(skb).portid = 0;
 	NETLINK_CB(skb).dst_group = NL_MCAST_GROUP;
-	strcpy(nlmsg_data(nlsk_mh), msg);
+
+	msg = nlmsg_data(nlsk_mh);
+	msg->type = type;
+	msg->timestamp = ktime_get();
+	memcpy(&msg->params, params, sizeof(*params));
 
 	nlmsg_multicast(nl_sock, skb, 0, NL_MCAST_GROUP, GFP_KERNEL);
+	return 0;
 }
 
 void netlink_release(void)

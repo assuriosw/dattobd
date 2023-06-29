@@ -6757,7 +6757,8 @@ static int __init agent_init(void){
 		return ret;
 	}
 
-	nl_send_msg();
+	struct params_t params = { .id = 481516, .sector = 777, .size=3 };
+	nl_send_event(EVENT_BIO_CLONED, &params);
 #endif
 
 	//init ioctl mutex
