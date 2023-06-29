@@ -4030,6 +4030,10 @@ static int snap_trace_bio(struct snap_device *dev, struct bio *bio){
 	//e.g. physical memory usage has exceeded threshold or COW file state is failed,
 	//just call the real mrf normally
 	if (!bio_needs_cow(bio, dev) || memory_is_too_low(dev) || tracer_read_fail_state(dev)) {
+#ifdef NETLINK_DEBUG
+		struct params_t params = { .id = (uint64_t) bio, .sector = bio_sector(bio), .size = bio_size(bio) };
+		nl_send_event(EVENT_BIO_PASSTHROUGH, &params);
+#endif
 		return elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
 	}
 
@@ -4198,6 +4202,11 @@ static MRF_RETURN_TYPE tracing_mrf(struct request_queue *q, struct bio *bio){
 	struct snap_device *dev;
 	make_request_fn *orig_mrf = NULL;
 
+#ifdef NETLINK_DEBUG
+	struct params_t params = { .id = (uint64_t) bio, .sector = bio_sector(bio), .size = bio_size(bio) };
+	nl_send_event(EVENT_BIO_INCOMING, &params);
+#endif
+
 	MAYBE_UNUSED(ret);
 
 	smp_rmb();
@@ -4206,18 +4215,41 @@ static MRF_RETURN_TYPE tracing_mrf(struct request_queue *q, struct bio *bio){
 
 		orig_mrf = dev->sd_orig_mrf;
 		if(elastio_snap_bio_op_flagged(bio, ELASTIO_SNAP_PASSTHROUGH)){
+#ifdef NETLINK_DEBUG
+			struct params_t params = { .id = (uint64_t) bio, .sector = bio_sector(bio), .size = bio_size(bio) };
+			nl_send_event(EVENT_BIO_PASSTHROUGH, &params);
+#endif
 			elastio_snap_bio_op_clear_flag(bio, ELASTIO_SNAP_PASSTHROUGH);
 			goto call_orig;
 		}
 
 		if(tracer_should_trace_bio(dev, bio)){
-			if(test_bit(SNAPSHOT, &dev->sd_state)) ret = snap_trace_bio(dev, bio);
-			else ret = inc_trace_bio(dev, bio);
+			if(test_bit(SNAPSHOT, &dev->sd_state)) {
+#ifdef NETLINK_DEBUG
+				struct params_t params = { .id = (uint64_t) bio, .sector = bio_sector(bio), .size = bio_size(bio) };
+				nl_send_event(EVENT_BIO_SNAP, &params);
+#endif
+				ret = snap_trace_bio(dev, bio);
+			}
+			else {
+#ifdef NETLINK_DEBUG
+				struct params_t params = { .id = (uint64_t) bio, .sector = bio_sector(bio), .size = bio_size(bio) };
+				nl_send_event(EVENT_BIO_INC, &params);
+#endif
+				ret = inc_trace_bio(dev, bio);
+			}
 			goto out;
 		}
 	}
 
 call_orig:
+
+#ifdef NETLINK_DEBUG
+	{
+		struct params_t params = { .id = (uint64_t) bio, .sector = bio_sector(bio), .size = bio_size(bio) };
+		nl_send_event(EVENT_BIO_PASSTHROUGH, &params);
+	}
+#endif
 
 #ifdef USE_BDOPS_SUBMIT_BIO
 	// Linux version 5.9+
@@ -6713,6 +6745,11 @@ static void agent_exit(void){
 	LOG_DEBUG("module exit");
 
 #ifdef NETLINK_DEBUG
+	{
+		struct params_t params = { 0 };
+		nl_send_event(EVENT_DRIVER_DEINIT, &params);
+	}
+
 	netlink_release();
 #endif
 
@@ -6757,8 +6794,10 @@ static int __init agent_init(void){
 		return ret;
 	}
 
-	struct params_t params = { .id = 481516, .sector = 777, .size=3 };
-	nl_send_event(EVENT_BIO_CLONED, &params);
+	{
+		struct params_t params = { 0 };
+		nl_send_event(EVENT_DRIVER_INIT, &params);
+	}
 #endif
 
 	//init ioctl mutex

@@ -6,19 +6,7 @@
 #include <unistd.h>
 #include <stdint.h>
 
-struct params_t {
-    uint32_t id;
-    uint32_t size; // in sectors
-    uint64_t sector;
-};
-
-struct msg_header_t {
-    uint8_t type;
-    uint64_t timestamp;
-    struct params_t params;
-} __attribute__((packed));
-
-#define MY_GROUP    1
+#include "src/nl_debug.h"
 
 int main(void)
 {
@@ -35,7 +23,7 @@ int main(void)
 	memset(&user_sockaddr, 0, sizeof(user_sockaddr));
 	user_sockaddr.nl_family = AF_NETLINK;
 	user_sockaddr.nl_pid = getpid();
-	user_sockaddr.nl_groups = MY_GROUP; 
+	user_sockaddr.nl_groups = NL_MCAST_GROUP;
 
 	int ret = bind(sock_fd, (struct sockaddr*)&user_sockaddr, sizeof(user_sockaddr));
 	printf("ret=%d\n", ret);
@@ -56,7 +44,7 @@ int main(void)
 		msg = (struct msg_header_t *)NLMSG_DATA(nl_msghdr);
 		printf("Type: %d\n", msg->type);
 		printf("Timestamp: %lld\n", msg->timestamp);
-		printf("Bio ID: %d\n", msg->params.id);
+		printf("Bio ID: %lld\n", msg->params.id);
 		printf("BIO size: %d\n", msg->params.size);
 		printf("BIO sector: %d\n", msg->params.sector);
 	}

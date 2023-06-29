@@ -1,6 +1,8 @@
+#ifdef KERNEL_MODULE
 #include <net/sock.h>
 #include <linux/netlink.h>
 #include <linux/skbuff.h>
+#endif
 
 #include "kernel-config.h"
 #include "elastio-snap.h"
@@ -8,6 +10,10 @@
 #define NL_MCAST_GROUP 1
 
 enum msg_type_t {
+	EVENT_DRIVER_INIT,
+	EVENT_DRIVER_DEINIT,
+	EVENT_TRACING_STARTED,
+	EVENT_TRACING_FINISHED,
 	EVENT_BIO_INCOMING,
 	EVENT_BIO_PASSTHROUGH,
 	EVENT_BIO_SNAP,
@@ -22,7 +28,7 @@ enum msg_type_t {
 };
 
 struct params_t {
-	uint32_t id;
+	uint64_t id;
 	uint32_t size; // in sectors
 	uint64_t sector;
 };

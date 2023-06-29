@@ -7,7 +7,7 @@ KERNELVERSION ?= $(shell uname -r)
 KDIR := /lib/modules/$(KERNELVERSION)/build
 PWD := $(shell pwd)
 INSTALL_MOD_DIR ?= extra
-EXTRA_CFLAGS := -g
+EXTRA_CFLAGS := -g -DKERNEL_MODULE
 FEATURE_TEST_BUILD_DIR := configure-tests/feature-tests/build
 
 default:
