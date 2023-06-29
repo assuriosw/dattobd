@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
 obj-m := elastio-snap.o
+elastio-snap-objs := main.o nl_debug.o
 
 KERNELVERSION ?= $(shell uname -r)
 KDIR := /lib/modules/$(KERNELVERSION)/build

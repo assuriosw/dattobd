@@ -9,6 +9,12 @@
 #include "kernel-config.h"
 #include "elastio-snap.h"
 
+#define NETLINK_DEBUG // FIXME
+					  //
+#ifdef NETLINK_DEBUG
+#include "nl_debug.h"
+#endif
+
 //current lowest supported kernel = 3.10.0
 
 //basic information
@@ -6706,6 +6712,10 @@ static void agent_exit(void){
 
 	LOG_DEBUG("module exit");
 
+#ifdef NETLINK_DEBUG
+	netlink_release();
+#endif
+
 	restore_system_call_table();
 
 	//unregister control device
@@ -6739,6 +6749,16 @@ static int __init agent_init(void){
 	int ret;
 
 	LOG_DEBUG("module init");
+
+#ifdef NETLINK_DEBUG
+	ret = netlink_init();
+	if (ret) {
+		LOG_DEBUG("failing driver init");
+		return ret;
+	}
+
+	nl_send_msg();
+#endif
 
 	//init ioctl mutex
 	mutex_init(&ioctl_mutex);
