@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <arpa/inet.h>
 #include <linux/netlink.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -73,6 +74,7 @@ struct event_desc event_text_desc[] = {
 };
 
 int sock_fd;
+int proxy_fd;
 static uint64_t last_seq_num = 0;
 static uint64_t seq_num_errors = 0;
 static uint64_t packets_lost = 0;
@@ -146,6 +148,7 @@ void usage()
 int main(int argc, char **argv)
 {
 	struct sockaddr_nl user_sockaddr;
+	struct sockaddr_in server_addr;
 	uint64_t sector_start = 0;
 	uint64_t sector_end = ~0ULL;
 	bool mute = false;
@@ -190,6 +193,15 @@ int main(int argc, char **argv)
 		}
 
 	sock_fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_USERSOCK);
+	proxy_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if(proxy_fd < 0){
+		printf("Error while creating socket\n");
+		return -1;
+	}
+
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_port = htons(20794);
+	server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
 	memset(&user_sockaddr, 0, sizeof(user_sockaddr));
 	user_sockaddr.nl_family = AF_NETLINK;
@@ -270,6 +282,12 @@ int main(int argc, char **argv)
 			printf(CRESET "\n");
 
 skip_print:
+			if(sendto(proxy_fd, msg, nl_msghdr[i]->nlmsg_len, 0,
+						(struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
+				printf("Unable to send message\n");
+				return -1;
+			}
+
 			if (msg->type == EVENT_DRIVER_DEINIT) {
 				last_seq_num = 0;
 				goto out;
