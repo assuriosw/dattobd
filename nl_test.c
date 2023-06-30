@@ -282,7 +282,7 @@ int main(int argc, char **argv)
 			printf(CRESET "\n");
 
 skip_print:
-			if(sendto(proxy_fd, msg, nl_msghdr[i]->nlmsg_len, 0,
+			if(sendto(proxy_fd, msg, msgs[i].msg_len, 0,
 						(struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
 				printf("Unable to send message\n");
 				return -1;
