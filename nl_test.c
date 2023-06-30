@@ -47,6 +47,7 @@ int main(void)
 		printf("Bio ID: %lld\n", msg->params.id);
 		printf("BIO size: %d\n", msg->params.size);
 		printf("BIO sector: %d\n", msg->params.sector);
+		printf("func: %s(), line: %d\n", msg->source.func, msg->source.line);
 	}
 
 	close(sock_fd);

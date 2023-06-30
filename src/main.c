@@ -3312,6 +3312,10 @@ static void tp_put(struct tracing_params *tp){
 		//if there are no references left, its safe to release the orig_bio
 		bio_queue_add(&tp->dev->sd_orig_bios, tp->orig_bio);
 
+#ifdef NETLINK_DEBUG
+		trace_event_bio(EVENT_BIO_RELEASED, tp->orig_bio, 0);
+#endif
+
 		// free nodes in the sector map list
 		for (curr = tp->bio_sects.head; curr != NULL; curr = next)
 		{
@@ -3450,6 +3454,9 @@ static void bio_destructor_snap_dev(struct bio *bio){
 #endif
 
 static void bio_free_clone(struct bio *bio){
+#ifdef NETLINK_DEBUG
+	trace_event_bio(EVENT_BIO_FREE, bio, 0);
+#endif
 	bio_free_pages(bio);
 	bio_put(bio);
 }
@@ -3525,6 +3532,9 @@ static int bio_make_read_clone(struct block_device *bdev, struct bio_set *bs, st
 
 	*bytes_added = total;
 	*bio_out = new_bio;
+#ifdef NETLINK_DEBUG
+		trace_event_bio(EVENT_BIO_CLONED, new_bio, 0);
+#endif
 	return 0;
 
 error:
@@ -3690,21 +3700,27 @@ static int snap_handle_write_bio(const struct snap_device *dev, struct bio *bio)
 	int ret;
 	char *data;
 	sector_t start_block, end_block = SECTOR_TO_BLOCK(bio_sector(bio));
-
+#ifdef HAVE_BVEC_ITER_ALL
+	struct bvec_iter_all iter;
+	struct bio_vec *bvec;
+#else
+	int i = 0;
+	struct bio_vec *bvec;
+#endif
 	/*
 	 * Previously we iterated using bio_for_each_segment(), which
 	 * caused problems in case if our bio was split by the system.
 	 * It is replaced with bio_for_each_segment_all() as we own the
 	 * bio and can guarantee that we have access to its bvecs
 	 */
+#ifdef NETLINK_DEBUG
+	trace_event_bio(EVENT_BIO_HANDLE_WRITE, bio, 0);
+#endif
+
 #ifdef HAVE_BVEC_ITER_ALL
-	struct bvec_iter_all iter;
-	struct bio_vec *bvec;
 	//iterate through the bio and handle each segment (which is guaranteed to be block aligned)
 	bio_for_each_segment_all(bvec, bio, iter) {
 #else
-	int i = 0;
-	struct bio_vec *bvec;
 	bio_for_each_segment_all(bvec, bio, i) {
 #endif
 		//find the start and end block
@@ -3770,7 +3786,9 @@ static int snap_mrf_thread(void *data){
 
 		//submit the original bio to the block IO layer
 		elastio_snap_bio_op_set_flag(bio, ELASTIO_SNAP_PASSTHROUGH);
-
+#ifdef NETLINK_DEBUG
+		trace_event_bio(EVENT_BIO_PASSTHROUGH, bio, 0);
+#endif
 		ret = elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
 #ifdef HAVE_MAKE_REQUEST_FN_INT
 		if(ret) generic_make_request(bio);
@@ -3910,6 +3928,10 @@ static void __on_bio_read_complete(struct bio *bio, int err){
 	unsigned short i = 0;
 #endif
 
+#ifdef NETLINK_DEBUG
+		trace_event_bio(EVENT_BIO_READ_COMPLETE, bio, 0);
+#endif
+
 	//check for read errors
 	if(err){
 		ret = err;
@@ -3955,6 +3977,10 @@ static void __on_bio_read_complete(struct bio *bio, int err){
 	bio_queue_add(&dev->sd_cow_bios, bio);
 	atomic64_inc(&dev->sd_received_cnt);
 	smp_wmb();
+
+#ifdef NETLINK_DEBUG
+		trace_event_bio(EVENT_BIO_QUEUED, bio, 0);
+#endif
 
 	tp_put(tp);
 

@@ -20,6 +20,8 @@ enum msg_type_t {
 	EVENT_BIO_INC,
 	EVENT_BIO_CLONED,
 	EVENT_BIO_READ_COMPLETE,
+	EVENT_BIO_QUEUED,   // cloned bio enqueued for the cow thread
+	EVENT_BIO_RELEASED, // parent bio released
 	EVENT_BIO_HANDLE_WRITE,
 	EVENT_BIO_FREE,
 	EVENT_COW_WRITE_MAPPING,
