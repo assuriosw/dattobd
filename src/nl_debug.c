@@ -1,6 +1,8 @@
 #include "nl_debug.h"
 
+static uint64_t seq_num = 1;
 struct sock *nl_sock = NULL;
+spinlock_t nl_spinlock;
 
 static void nl_recv_msg(struct sk_buff *skb)
 {
@@ -18,9 +20,11 @@ int nl_send_event(enum msg_type_t type, const char *func, int line, struct param
 	NETLINK_CB(skb).portid = 0;
 	NETLINK_CB(skb).dst_group = NL_MCAST_GROUP;
 
+	spin_lock_bh(&nl_spinlock);
 	msg = nlmsg_data(nlsk_mh);
 	msg->type = type;
 	msg->timestamp = ktime_get();
+	msg->seq_num = seq_num;
 	if (func) {
 		msg->source.line = line;
 		strncpy(msg->source.func, func, sizeof(msg->source.func));
@@ -28,6 +32,8 @@ int nl_send_event(enum msg_type_t type, const char *func, int line, struct param
 	memcpy(&msg->params, params, sizeof(*params));
 
 	nlmsg_multicast(nl_sock, skb, 0, NL_MCAST_GROUP, GFP_ATOMIC);
+	seq_num++;
+	spin_unlock_bh(&nl_spinlock);
 	return 0;
 }
 
@@ -44,6 +50,7 @@ int netlink_init(void)
 	};
 
 	printk("netlink init\n");
+	spin_lock_init(&nl_spinlock);
 
 	nl_sock = netlink_kernel_create(&init_net, NETLINK_USERSOCK, &cfg);
 	if (!nl_sock) {

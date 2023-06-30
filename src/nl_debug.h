@@ -54,6 +54,7 @@ struct code_info_t {
 
 struct msg_header_t {
 	uint8_t type;
+	uint64_t seq_num;
 	uint64_t timestamp;
 	struct params_t params;
 	struct code_info_t source;

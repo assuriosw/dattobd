@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -60,9 +62,15 @@ struct event_desc event_text_desc[] = {
 };
 
 int sock_fd;
+static uint64_t last_seq_num = 0;
+static uint64_t seq_num_errors = 0;
+static uint64_t packets_lost = 0;
 
 static void int_handler(int val) {
 	printf(CRESET "\n");
+	printf("Scanning done.\n");
+	printf("Sequence number errors: %lld\n", seq_num_errors);
+	printf("Packets lost: %lld\n", packets_lost);
 	close(sock_fd);
 	exit(0);
 }
@@ -112,6 +120,8 @@ static bool is_cow_event(enum msg_type_t type)
 	return false;
 }
 
+#define MSG_SIZE 256
+
 int main(void)
 {
 	struct sockaddr_nl user_sockaddr;
@@ -131,43 +141,80 @@ int main(void)
 		return -1;
 	}
 
+	int rcvbuf = 500000000;
+	if (setsockopt(sock_fd, SOL_SOCKET, SO_RCVBUFFORCE,
+				&rcvbuf, sizeof rcvbuf)) {
+		printf("Couldn't update socket rx buf\n");
+		// also consider this:
+		// echo 500000000 > /proc/sys/net/core/rmem_max
+		// echo 500000000 > /proc/sys/net/core/rmem_default
+	}
+
+#define MAX_MSGS	5
+#define TIMEOUT 300000
+
 	while (true) {
-		struct iovec iov;
-		struct msghdr msghdr;
-		struct nlmsghdr *nl_msghdr;
+		int i;
+		struct iovec iov[MAX_MSGS];
+		struct mmsghdr msgs[MAX_MSGS];
+		struct timespec timeout;
+		struct nlmsghdr *nl_msghdr[MAX_MSGS];
 
-		nl_msghdr = (struct nlmsghdr *) malloc(NLMSG_SPACE(256));
-		memset(nl_msghdr, 0, NLMSG_SPACE(256));
+		memset(msgs, 0, sizeof(msgs));
 
-		iov.iov_base = (void*) nl_msghdr;
-		iov.iov_len = NLMSG_SPACE(256);
+		for (i = 0; i < MAX_MSGS; i++) {
+			nl_msghdr[i] = (struct nlmsghdr *) malloc(NLMSG_SPACE(MSG_SIZE));
+			memset(nl_msghdr[i], 0, NLMSG_SPACE(MSG_SIZE));
 
-		msghdr.msg_name = (void*) &user_sockaddr;
-		msghdr.msg_namelen = sizeof(user_sockaddr);
-		msghdr.msg_iov = &iov;
-		msghdr.msg_iovlen = 1;
+			iov[i].iov_base = (void*) nl_msghdr[i];
+			iov[i].iov_len = NLMSG_SPACE(MSG_SIZE);
 
-		recvmsg(sock_fd, &msghdr, 0);
-
-		struct msg_header_t *msg = (struct msg_header_t *)NLMSG_DATA(nl_msghdr);
-
-		if (is_generic_event(msg->type))
-			printf(CYEL);
-		else if (is_bio_event(msg->type))
-			printf(CCYN);
-		else if (is_cow_event(msg->type))
-			printf(CMAG);
-
-		printf("[%llu] %24.24s [%2d] ", msg->timestamp, event2str(msg->type), msg->type);
-		printf("%32.32s(), line %4d", msg->source.func, msg->source.line);
-
-		if (msg->params.id) {
-			printf(", bio ID: %16llx, sector: %16llu, size: %10d", msg->params.id, msg->params.sector, msg->params.size);
+			msgs[i].msg_hdr.msg_iov = &iov[i];
+			msgs[i].msg_hdr.msg_iovlen = 1;
 		}
 
-		printf(", priv1: %10llu, priv2: %10llu", msg->params.priv1, msg->params.priv2);
-		printf(CRESET "\n");
-		free(nl_msghdr);
+		timeout.tv_sec = 0;
+		timeout.tv_nsec = 100000;
+
+		int retval = recvmmsg(sock_fd, msgs, MAX_MSGS, 0, &timeout);
+
+		for (i = 0; i < retval; i++) {
+			struct msg_header_t *msg = (struct msg_header_t *)NLMSG_DATA(nl_msghdr[i]);
+
+			if (is_generic_event(msg->type))
+				printf(CYEL);
+			else if (is_bio_event(msg->type))
+				printf(CCYN);
+			else if (is_cow_event(msg->type))
+				printf(CMAG);
+
+			printf("[%10llu] [%16llu] %24.24s [%2d] ", msg->seq_num, msg->timestamp, event2str(msg->type), msg->type);
+			printf("%32.32s(), line %4d", msg->source.func, msg->source.line);
+
+			if (msg->params.id) {
+				printf(", bio ID: %16llx, sector: %16llu, size: %10d", msg->params.id, msg->params.sector, msg->params.size);
+			}
+
+			printf(", priv1: %10llu, priv2: %10llu", msg->params.priv1, msg->params.priv2);
+			printf(CRESET "\n");
+
+			if (!last_seq_num) {
+				last_seq_num = msg->seq_num;
+				goto out;
+			}
+
+			if (msg->seq_num != last_seq_num + 1) {
+				packets_lost += (msg->seq_num - last_seq_num - 1);
+				printf(CRED "DATA DROPPED: last seq_num: %llu, seq_num received: %llu\n" CRESET, last_seq_num, msg->seq_num);
+				seq_num_errors++;
+			}
+
+			last_seq_num = msg->seq_num;
+		}
+
+out:
+		for (i = 0; i < MAX_MSGS; i++)
+			free(nl_msghdr[i]);
 	}
 
 	return 0;
