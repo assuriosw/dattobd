@@ -31,22 +31,20 @@ enum msg_type_t {
 	EVENT_BIO_RELEASED, // parent bio released
 	EVENT_BIO_HANDLE_WRITE,
 	EVENT_BIO_FREE,
+	EVENT_COW_READ_MAPPING,
 	EVENT_COW_WRITE_MAPPING,
+	EVENT_COW_READ_DATA,
 	EVENT_COW_WRITE_DATA,
 	EVENT_DEBUG,
 	EVENT_LAST
-};
-
-struct event_desc {
-	enum msg_type_t event;
-	const char *desc;
 };
 
 struct params_t {
 	uint64_t id;
 	uint32_t size; // in sectors
 	uint64_t sector;
-	uint64_t priv;
+	uint64_t priv1;
+	uint64_t priv2;
 } __attribute__((packed));
 
 struct code_info_t {
@@ -65,7 +63,7 @@ struct msg_header_t {
 
 #define trace_event_bio(_type, _bio, _priv) \
 ({ 											\
-	struct params_t params; 				\
+	struct params_t params = { 0 };			\
 											\
 	if (_bio) { 							\
 		params.id = (uint64_t)(_bio); 		\
@@ -73,19 +71,29 @@ struct msg_header_t {
 		params.sector = bio_sector(_bio); 	\
 	} 										\
 											\
-	params.priv = (_priv); 					\
+	params.priv1 = (_priv); 					\
+	params.priv2 = 0; 					\
 	nl_send_event(_type, __func__, __LINE__, &params); \
 })
 
 #define trace_event_generic(_type, _priv) 	\
 ({ 											\
-	struct params_t params; 				\
+	struct params_t params = { 0 }; 		\
 											\
-	params.priv = (_priv); 					\
+	params.priv1 = (_priv); 				\
+	params.priv2 = 0; 						\
+	nl_send_event(_type, __func__, __LINE__, &params); \
+})
+
+#define trace_event_cow(_type, _priv1, _priv2)	\
+({ 												\
+	struct params_t params = { 0 }; 			\
+												\
+	params.priv1 = (_priv1); 					\
+	params.priv2 = (_priv2); 					\
 	nl_send_event(_type, __func__, __LINE__, &params); \
 })
 
 int nl_send_event(enum msg_type_t type, const char *func, int line, struct params_t *params);
-const char *event2str(enum msg_type_t type);
 void netlink_release(void);
 int netlink_init(void);
