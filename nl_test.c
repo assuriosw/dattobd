@@ -1,3 +1,12 @@
+// SPDX-License-Identifier: GPL-2.0-only
+
+/*
+ * Copyright (C) 2023 Elastio Software Inc.
+ *
+ * Author: Stanislav Barantsev
+ */
+
+
 #define _GNU_SOURCE
 
 #include <stdio.h>
@@ -22,6 +31,8 @@ struct event_desc {
 	enum event_kind_t kind;
 	const char *desc;
 };
+
+#define MSG_SIZE 256
 
 #define CNRM  "\x1B[0m"
 #define CRED  "\x1B[31m"
@@ -120,13 +131,63 @@ static bool is_cow_event(enum msg_type_t type)
 	return false;
 }
 
-#define MSG_SIZE 256
+void usage()
+{
+	printf("elastio-snap driver debugging utility\n");
+	printf(	"Usage:\n"
+			" -s <sector> : starting sector filter\n"
+			" -e <sector> : ending sector filter\n"
+			" -m : mute all output\n"
+			" -c : mute all COW file events\n"
+			" -h : this usage\n\n"
+			);
+}
 
-int main(void)
+int main(int argc, char **argv)
 {
 	struct sockaddr_nl user_sockaddr;
+	uint64_t sector_start = 0;
+	uint64_t sector_end = ~0ULL;
+	bool mute = false;
+	bool mute_cow_events = false;
+	int option;
 
 	signal(SIGINT, int_handler);
+
+	while ((option = getopt(argc, argv, "s:e:mch?")) != -1) {
+		switch (option)
+		{
+			case 's':
+				sector_start = strtol(optarg, NULL, 10);
+				break;
+			case 'e':
+				sector_end = strtol(optarg, NULL, 10);
+				break;
+			case 'm':
+				mute = true;
+				printf("Output muted\n");
+				break;
+			case 'c':
+				mute_cow_events = true;
+				printf("COW events muted\n");
+				break;
+			case 'h':
+			case '?':
+			default:
+				usage();
+				return -1;
+		}
+	}
+
+		if (sector_end < sector_start) {
+			printf("Sector range is invalid\n");
+			return -1;
+		} else {
+			if (sector_end == ~0ULL)
+				printf("Filtering sector range: %llu - max\n", sector_start);
+			else
+				printf("Filtering sector range: %llu - %llu\n", sector_start, sector_end);
+		}
 
 	sock_fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_USERSOCK);
 
@@ -181,6 +242,16 @@ int main(void)
 		for (i = 0; i < retval; i++) {
 			struct msg_header_t *msg = (struct msg_header_t *)NLMSG_DATA(nl_msghdr[i]);
 
+			if (mute)
+				goto skip_print;
+
+			if (is_bio_event(msg->type) && msg->params.id &&
+					(msg->params.sector < sector_start || msg->params.sector > sector_end))
+				goto skip_print;
+
+			if (is_cow_event(msg->type) && mute_cow_events)
+				goto skip_print;
+
 			if (is_generic_event(msg->type))
 				printf(CYEL);
 			else if (is_bio_event(msg->type))
@@ -198,6 +269,12 @@ int main(void)
 			printf(", priv1: %10llu, priv2: %10llu", msg->params.priv1, msg->params.priv2);
 			printf(CRESET "\n");
 
+skip_print:
+			if (msg->type == EVENT_DRIVER_DEINIT) {
+				last_seq_num = 0;
+				goto out;
+			}
+
 			if (!last_seq_num) {
 				last_seq_num = msg->seq_num;
 				goto out;
@@ -210,6 +287,7 @@ int main(void)
 			}
 
 			last_seq_num = msg->seq_num;
+
 		}
 
 out:
