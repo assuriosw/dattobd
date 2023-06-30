@@ -12,6 +12,13 @@
 enum msg_type_t {
 	EVENT_DRIVER_INIT,
 	EVENT_DRIVER_DEINIT,
+	EVENT_SETUP_SNAPSHOT,
+	EVENT_SETUP_UNVERIFIED_SNAP,
+	EVENT_SETUP_UNVERIFIED_INC,
+	EVENT_TRANSITION_INC,
+	EVENT_TRANSITION_SNAP,
+	EVENT_TRANSITION_DORMANT,
+	EVENT_TRANSITION_ACTIVE,
 	EVENT_TRACING_STARTED,
 	EVENT_TRACING_FINISHED,
 	EVENT_BIO_INCOMING,
@@ -26,7 +33,13 @@ enum msg_type_t {
 	EVENT_BIO_FREE,
 	EVENT_COW_WRITE_MAPPING,
 	EVENT_COW_WRITE_DATA,
-	EVENT_DEBUG
+	EVENT_DEBUG,
+	EVENT_LAST
+};
+
+struct event_desc {
+	enum msg_type_t event;
+	const char *desc;
 };
 
 struct params_t {
@@ -48,28 +61,31 @@ struct msg_header_t {
 	struct code_info_t source;
 } __attribute__((packed));
 
-int nl_send_event(enum msg_type_t type, const char *func, int line, struct params_t *params);
-void netlink_release(void);
-int netlink_init(void);
+#define TO_STR(_type) #_type
 
-#define trace_event_bio(_type, _bio, _priv) 	\
-{ 											\
-	struct params_t params; 					\
+#define trace_event_bio(_type, _bio, _priv) \
+({ 											\
+	struct params_t params; 				\
 											\
-	if (_bio) { 								\
-		params.id = (uint64_t) (_bio); 		\
+	if (_bio) { 							\
+		params.id = (uint64_t)(_bio); 		\
 		params.size = bio_size(_bio); 		\
 		params.sector = bio_sector(_bio); 	\
 	} 										\
 											\
 	params.priv = (_priv); 					\
 	nl_send_event(_type, __func__, __LINE__, &params); \
-}
+})
 
 #define trace_event_generic(_type, _priv) 	\
-{ 											\
-	struct params_t params; 					\
+({ 											\
+	struct params_t params; 				\
 											\
 	params.priv = (_priv); 					\
 	nl_send_event(_type, __func__, __LINE__, &params); \
-}
+})
+
+int nl_send_event(enum msg_type_t type, const char *func, int line, struct params_t *params);
+const char *event2str(enum msg_type_t type);
+void netlink_release(void);
+int netlink_init(void);

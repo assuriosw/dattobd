@@ -4514,6 +4514,9 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 #else
 		if(new_mrf) elastio_snap_set_bd_mrf(bdev, new_mrf);
 #endif
+#ifdef NETLINK_DEBUG
+	trace_event_generic(EVENT_TRACING_STARTED, 0);
+#endif
 	}else{
 		LOG_DEBUG("ending tracing");
 #ifdef HAVE_BLK_MQ_MAKE_REQUEST
@@ -4528,6 +4531,10 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 #endif
 		if (dev_ptr) *dev_ptr = dev;
 		smp_wmb();
+
+#ifdef NETLINK_DEBUG
+	trace_event_generic(EVENT_TRACING_FINISHED, 0);
+#endif
 	}
 
 	if(origsb){
@@ -5218,6 +5225,10 @@ static void tracer_destroy(struct snap_device *dev){
 static int tracer_setup_active_snap(struct snap_device *dev, unsigned int minor, const char *bdev_path, const char *cow_path, unsigned long fallocated_space, unsigned long cache_size, bool ignore_snap_errors){
 	int ret;
 
+#ifdef NETLINK_DEBUG
+	trace_event_generic(EVENT_SETUP_SNAPSHOT, 0);
+#endif
+
 	set_bit(SNAPSHOT, &dev->sd_state);
 	set_bit(ACTIVE, &dev->sd_state);
 	clear_bit(UNVERIFIED, &dev->sd_state);
@@ -5259,6 +5270,14 @@ error:
 }
 
 static int __tracer_setup_unverified(struct snap_device *dev, unsigned int minor, const char *bdev_path, const char *cow_path, unsigned long cache_size, bool ignore_snap_errors, int is_snap){
+
+#ifdef NETLINK_DEBUG
+	if (is_snap)
+		trace_event_generic(EVENT_SETUP_UNVERIFIED_SNAP, 0);
+	else
+		trace_event_generic(EVENT_SETUP_UNVERIFIED_INC, 0);
+#endif
+
 	if(is_snap) set_bit(SNAPSHOT, &dev->sd_state);
 	else clear_bit(SNAPSHOT, &dev->sd_state);
 	clear_bit(ACTIVE, &dev->sd_state);
@@ -5293,6 +5312,10 @@ static int tracer_active_snap_to_inc(struct snap_device *old_dev){
 	struct snap_device *dev;
 	char *abs_path = NULL;
 	int abs_path_len;
+
+#ifdef NETLINK_DEBUG
+	trace_event_generic(EVENT_TRANSITION_INC, 0);
+#endif
 
 	//allocate new tracer
 	ret = tracer_alloc(&dev);
@@ -5371,6 +5394,10 @@ error:
 static int tracer_active_inc_to_snap(struct snap_device *old_dev, const char *cow_path, unsigned long fallocated_space){
 	int ret;
 	struct snap_device *dev;
+
+#ifdef NETLINK_DEBUG
+	trace_event_generic(EVENT_TRANSITION_SNAP, 0);
+#endif
 
 	//allocate new tracer
 	ret = tracer_alloc(&dev);
@@ -6031,6 +6058,9 @@ error:
 
 static void auto_transition_dormant(unsigned int i){
 	mutex_lock(&ioctl_mutex);
+#ifdef NETLINK_DEBUG
+	trace_event_generic(EVENT_TRANSITION_DORMANT, 0);
+#endif
 	__tracer_active_to_dormant(snap_devices[i]);
 	mutex_unlock(&ioctl_mutex);
 }
@@ -6039,6 +6069,10 @@ static void auto_transition_active(unsigned int i, const char __user *dir_name){
 	struct snap_device *dev = snap_devices[i];
 
 	mutex_lock(&ioctl_mutex);
+
+#ifdef NETLINK_DEBUG
+	trace_event_generic(EVENT_TRANSITION_ACTIVE, 0);
+#endif
 
 	if(test_bit(UNVERIFIED, &dev->sd_state)){
 		if(test_bit(SNAPSHOT, &dev->sd_state)) __tracer_unverified_snap_to_active(dev, dir_name);
@@ -6762,11 +6796,6 @@ static void agent_exit(void){
 
 	LOG_DEBUG("module exit");
 
-#ifdef NETLINK_DEBUG
-	trace_event_generic(EVENT_DRIVER_DEINIT, 0);
-	netlink_release();
-#endif
-
 	restore_system_call_table();
 
 	//unregister control device
@@ -6793,6 +6822,10 @@ static void agent_exit(void){
 	//unregister our block device driver
 	LOG_DEBUG("unregistering device driver from the kernel");
 	unregister_blkdev(major, DRIVER_NAME);
+#ifdef NETLINK_DEBUG
+	trace_event_generic(EVENT_DRIVER_DEINIT, 0);
+	netlink_release();
+#endif
 }
 module_exit(agent_exit);
 

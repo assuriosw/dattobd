@@ -13,7 +13,7 @@ int nl_send_event(enum msg_type_t type, const char *func, int line, struct param
 	struct msg_header_t *msg;
 	struct nlmsghdr *nlsk_mh;
 
-	skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_ATOMIC);
 	nlsk_mh = nlmsg_put(skb, 0, 0, NLMSG_DONE, sizeof(struct msg_header_t), 0);
 	NETLINK_CB(skb).portid = 0;
 	NETLINK_CB(skb).dst_group = NL_MCAST_GROUP;
@@ -27,7 +27,7 @@ int nl_send_event(enum msg_type_t type, const char *func, int line, struct param
 	}
 	memcpy(&msg->params, params, sizeof(*params));
 
-	nlmsg_multicast(nl_sock, skb, 0, NL_MCAST_GROUP, GFP_KERNEL);
+	nlmsg_multicast(nl_sock, skb, 0, NL_MCAST_GROUP, GFP_ATOMIC);
 	return 0;
 }
 
@@ -53,5 +53,3 @@ int netlink_init(void)
 
 	return 0;
 }
-
-
