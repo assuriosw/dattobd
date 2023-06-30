@@ -7,7 +7,7 @@ static void nl_recv_msg(struct sk_buff *skb)
 	nlmsg_free(skb);
 }
 
-int nl_send_event(enum msg_type_t type, struct params_t *params)
+int nl_send_event(enum msg_type_t type, const char *func, int line, struct params_t *params)
 {
 	struct sk_buff *skb;
 	struct msg_header_t *msg;
@@ -21,6 +21,10 @@ int nl_send_event(enum msg_type_t type, struct params_t *params)
 	msg = nlmsg_data(nlsk_mh);
 	msg->type = type;
 	msg->timestamp = ktime_get();
+	if (func) {
+		msg->source.line = line;
+		strncpy(msg->source.func, func, sizeof(msg->source.func));
+	}
 	memcpy(&msg->params, params, sizeof(*params));
 
 	nlmsg_multicast(nl_sock, skb, 0, NL_MCAST_GROUP, GFP_KERNEL);
@@ -49,4 +53,5 @@ int netlink_init(void)
 
 	return 0;
 }
+
 

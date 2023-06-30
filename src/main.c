@@ -4031,8 +4031,7 @@ static int snap_trace_bio(struct snap_device *dev, struct bio *bio){
 	//just call the real mrf normally
 	if (!bio_needs_cow(bio, dev) || memory_is_too_low(dev) || tracer_read_fail_state(dev)) {
 #ifdef NETLINK_DEBUG
-		struct params_t params = { .id = (uint64_t) bio, .sector = bio_sector(bio), .size = bio_size(bio) };
-		nl_send_event(EVENT_BIO_PASSTHROUGH, &params);
+		trace_event_bio(EVENT_BIO_PASSTHROUGH, bio, 0);
 #endif
 		return elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
 	}
@@ -4203,8 +4202,7 @@ static MRF_RETURN_TYPE tracing_mrf(struct request_queue *q, struct bio *bio){
 	make_request_fn *orig_mrf = NULL;
 
 #ifdef NETLINK_DEBUG
-	struct params_t params = { .id = (uint64_t) bio, .sector = bio_sector(bio), .size = bio_size(bio) };
-	nl_send_event(EVENT_BIO_INCOMING, &params);
+	trace_event_bio(EVENT_BIO_INCOMING, bio, 0);
 #endif
 
 	MAYBE_UNUSED(ret);
@@ -4216,8 +4214,7 @@ static MRF_RETURN_TYPE tracing_mrf(struct request_queue *q, struct bio *bio){
 		orig_mrf = dev->sd_orig_mrf;
 		if(elastio_snap_bio_op_flagged(bio, ELASTIO_SNAP_PASSTHROUGH)){
 #ifdef NETLINK_DEBUG
-			struct params_t params = { .id = (uint64_t) bio, .sector = bio_sector(bio), .size = bio_size(bio) };
-			nl_send_event(EVENT_BIO_PASSTHROUGH, &params);
+			trace_event_bio(EVENT_BIO_PASSTHROUGH, bio, 0);
 #endif
 			elastio_snap_bio_op_clear_flag(bio, ELASTIO_SNAP_PASSTHROUGH);
 			goto call_orig;
@@ -4226,15 +4223,13 @@ static MRF_RETURN_TYPE tracing_mrf(struct request_queue *q, struct bio *bio){
 		if(tracer_should_trace_bio(dev, bio)){
 			if(test_bit(SNAPSHOT, &dev->sd_state)) {
 #ifdef NETLINK_DEBUG
-				struct params_t params = { .id = (uint64_t) bio, .sector = bio_sector(bio), .size = bio_size(bio) };
-				nl_send_event(EVENT_BIO_SNAP, &params);
+				trace_event_bio(EVENT_BIO_SNAP, bio, 0);
 #endif
 				ret = snap_trace_bio(dev, bio);
 			}
 			else {
 #ifdef NETLINK_DEBUG
-				struct params_t params = { .id = (uint64_t) bio, .sector = bio_sector(bio), .size = bio_size(bio) };
-				nl_send_event(EVENT_BIO_INC, &params);
+				trace_event_bio(EVENT_BIO_INC, bio, 0);
 #endif
 				ret = inc_trace_bio(dev, bio);
 			}
@@ -4245,10 +4240,7 @@ static MRF_RETURN_TYPE tracing_mrf(struct request_queue *q, struct bio *bio){
 call_orig:
 
 #ifdef NETLINK_DEBUG
-	{
-		struct params_t params = { .id = (uint64_t) bio, .sector = bio_sector(bio), .size = bio_size(bio) };
-		nl_send_event(EVENT_BIO_PASSTHROUGH, &params);
-	}
+	trace_event_bio(EVENT_BIO_PASSTHROUGH, bio, 0);
 #endif
 
 #ifdef USE_BDOPS_SUBMIT_BIO
@@ -6745,11 +6737,7 @@ static void agent_exit(void){
 	LOG_DEBUG("module exit");
 
 #ifdef NETLINK_DEBUG
-	{
-		struct params_t params = { 0 };
-		nl_send_event(EVENT_DRIVER_DEINIT, &params);
-	}
-
+	trace_event_generic(EVENT_DRIVER_DEINIT, 0);
 	netlink_release();
 #endif
 
@@ -6794,10 +6782,7 @@ static int __init agent_init(void){
 		return ret;
 	}
 
-	{
-		struct params_t params = { 0 };
-		nl_send_event(EVENT_DRIVER_INIT, &params);
-	}
+	trace_event_generic(EVENT_DRIVER_INIT, 0);
 #endif
 
 	//init ioctl mutex
