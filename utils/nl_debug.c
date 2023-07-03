@@ -19,7 +19,7 @@
 #include <stdint.h>
 #include <signal.h>
 
-#include "src/nl_debug.h"
+#include "nl_debug.h"
 
 enum event_kind_t {
 	KIND_EVENT_GENERIC,
@@ -82,8 +82,8 @@ static uint64_t packets_lost = 0;
 static void int_handler(int val) {
 	printf(CRESET "\n");
 	printf("Scanning done.\n");
-	printf("Sequence number errors: %lld\n", seq_num_errors);
-	printf("Packets lost: %lld\n", packets_lost);
+	printf("Sequence number errors: %lu\n", seq_num_errors);
+	printf("Packets lost: %lu\n", packets_lost);
 	close(sock_fd);
 	exit(0);
 }
@@ -187,9 +187,9 @@ int main(int argc, char **argv)
 			return -1;
 		} else {
 			if (sector_end == ~0ULL)
-				printf("Filtering sector range: %llu - max\n", sector_start);
+				printf("Filtering sector range: %lu - max\n", sector_start);
 			else
-				printf("Filtering sector range: %llu - %llu\n", sector_start, sector_end);
+				printf("Filtering sector range: %lu - %lu\n", sector_start, sector_end);
 		}
 
 	sock_fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_USERSOCK);
@@ -271,14 +271,14 @@ int main(int argc, char **argv)
 			else if (is_cow_event(msg->type))
 				printf(CMAG);
 
-			printf("[%10llu] [%16llu] %24.24s [%2d] ", msg->seq_num, msg->timestamp, event2str(msg->type), msg->type);
+			printf("[%10lu] [%16lu] %24.24s [%2d] ", msg->seq_num, msg->timestamp, event2str(msg->type), msg->type);
 			printf("%32.32s(), line %4d", msg->source.func, msg->source.line);
 
 			if (msg->params.id) {
-				printf(", bio ID: %16llx, sector: %16llu, size: %10d", msg->params.id, msg->params.sector, msg->params.size);
+				printf(", bio ID: %16lx, sector: %16lu, size: %10d", msg->params.id, msg->params.sector, msg->params.size);
 			}
 
-			printf(", priv1: %10llu, priv2: %10llu", msg->params.priv1, msg->params.priv2);
+			printf(", priv1: %10lu, priv2: %10lu", msg->params.priv1, msg->params.priv2);
 			printf(CRESET "\n");
 
 skip_print:
@@ -300,7 +300,7 @@ skip_print:
 
 			if (msg->seq_num != last_seq_num + 1) {
 				packets_lost += (msg->seq_num - last_seq_num - 1);
-				printf(CRED "DATA DROPPED: last seq_num: %llu, seq_num received: %llu\n" CRESET, last_seq_num, msg->seq_num);
+				printf(CRED "DATA DROPPED: last seq_num: %lu, seq_num received: %lu\n" CRESET, last_seq_num, msg->seq_num);
 				seq_num_errors++;
 			}
 
