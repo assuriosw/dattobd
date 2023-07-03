@@ -9,8 +9,6 @@
 #include "kernel-config.h"
 #include "elastio-snap.h"
 
-#define NETLINK_DEBUG // FIXME
-					  //
 #ifdef NETLINK_DEBUG
 #include "nl_debug.h"
 #endif
