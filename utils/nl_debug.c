@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <signal.h>
+#include <fcntl.h>
 
 #include "nl_debug.h"
 
@@ -214,6 +215,9 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
+	int flags = fcntl(sock_fd, F_GETFL);
+	fcntl(sock_fd, F_SETFL, flags | O_NONBLOCK);
+
 	int rcvbuf = 500000000;
 	if (setsockopt(sock_fd, SOL_SOCKET, SO_RCVBUFFORCE,
 				&rcvbuf, sizeof rcvbuf)) {
@@ -247,9 +251,12 @@ int main(int argc, char **argv)
 		}
 
 		timeout.tv_sec = 0;
-		timeout.tv_nsec = 100000;
+		timeout.tv_nsec = 500000;
 
 		int retval = recvmmsg(sock_fd, msgs, MAX_MSGS, 0, &timeout);
+
+		if (retval == -1)
+			goto out;
 
 		for (i = 0; i < retval; i++) {
 			struct msg_header_t *msg = (struct msg_header_t *)NLMSG_DATA(nl_msghdr[i]);
