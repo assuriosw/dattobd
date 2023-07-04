@@ -8,10 +8,10 @@ SOURCES_NL_DEBUG = nl_debug.c
 
 all: nl_debug update-img
 
-nl_debug:
+nl_debug: $(SOURCES_NL_DEBUG)
 	$(CC) $(CCFLAGS) -o nl_debug $(SOURCES_NL_DEBUG)
 
-update-img:
+update-img: $(SOURCES_UPDATE_IMG)
 	$(CC) $(CCFLAGS) -o update-img -L $(BASE_DIR)/lib $(SOURCES_UPDATE_IMG) -lelastio-snap
 
 install: update-img
