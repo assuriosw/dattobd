@@ -3634,6 +3634,11 @@ static int snap_handle_read_bio(const struct snap_device *dev, struct bio *bio){
 
 	//submit the bio to the base device and wait for completion
 	if(mode != READ_MODE_COW_FILE){
+
+#ifdef NETLINK_DEBUG
+		trace_event_bio(EVENT_BIO_HANDLE_READ_BASE, bio, 0);
+#endif
+
 		ret = elastio_snap_submit_bio_wait(bio);
 		if(ret){
 			LOG_ERROR(ret, "error reading from base device for read");
@@ -3647,7 +3652,12 @@ static int snap_handle_read_bio(const struct snap_device *dev, struct bio *bio){
 	}
 
 	if(mode != READ_MODE_BASE_DEVICE){
-		//reset the bio
+
+#ifdef NETLINK_DEBUG
+		trace_event_bio(EVENT_BIO_HANDLE_READ_COW, bio, 0);
+#endif
+
+	//reset the bio
 		bio_idx(bio) = bio_orig_idx;
 		bio_size(bio) = bio_orig_size;
 		bio_sector(bio) = bio_orig_sect;
@@ -3696,6 +3706,11 @@ static int snap_handle_read_bio(const struct snap_device *dev, struct bio *bio){
 	}
 
 out:
+
+#ifdef NETLINK_DEBUG
+		trace_event_bio(EVENT_BIO_HANDLE_READ_DONE, bio, 0);
+#endif
+
 	if(ret) {
 		LOG_ERROR(ret, "error handling read bio");
 		bio_idx(bio) = bio_orig_idx;
@@ -3755,9 +3770,18 @@ static int snap_handle_write_bio(const struct snap_device *dev, struct bio *bio)
 		kunmap(bvec->bv_page);
 	}
 
+#ifdef NETLINK_DEBUG
+		trace_event_bio(EVENT_BIO_HANDLE_WRITE_DONE, bio, 0);
+#endif
+
 	return 0;
 
 error:
+
+#ifdef NETLINK_DEBUG
+		trace_event_bio(EVENT_BIO_HANDLE_WRITE_DONE, bio, 1);
+#endif
+
 	LOG_ERROR(ret, "error handling write bio");
 	return ret;
 }
@@ -3801,7 +3825,7 @@ static int snap_mrf_thread(void *data){
 		//submit the original bio to the block IO layer
 		elastio_snap_bio_op_set_flag(bio, ELASTIO_SNAP_PASSTHROUGH);
 #ifdef NETLINK_DEBUG
-		trace_event_bio(EVENT_BIO_PASSTHROUGH, bio, 0);
+		trace_event_bio(EVENT_BIO_CALL_ORIG, bio, 0);
 #endif
 		ret = elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
 #ifdef HAVE_MAKE_REQUEST_FN_INT
@@ -4071,7 +4095,7 @@ static int snap_trace_bio(struct snap_device *dev, struct bio *bio){
 	//just call the real mrf normally
 	if (!bio_needs_cow(bio, dev) || memory_is_too_low(dev) || tracer_read_fail_state(dev)) {
 #ifdef NETLINK_DEBUG
-		trace_event_bio(EVENT_BIO_PASSTHROUGH, bio, 0);
+		trace_event_bio(EVENT_BIO_CALL_ORIG, bio, 0);
 #endif
 		return elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
 	}
@@ -4242,7 +4266,7 @@ static MRF_RETURN_TYPE tracing_mrf(struct request_queue *q, struct bio *bio){
 	make_request_fn *orig_mrf = NULL;
 
 #ifdef NETLINK_DEBUG
-	trace_event_bio(EVENT_BIO_INCOMING, bio, 0);
+	trace_event_bio(EVENT_BIO_INCOMING_TRACING_MRF, bio, 0);
 #endif
 
 	MAYBE_UNUSED(ret);
@@ -4254,7 +4278,7 @@ static MRF_RETURN_TYPE tracing_mrf(struct request_queue *q, struct bio *bio){
 		orig_mrf = dev->sd_orig_mrf;
 		if(elastio_snap_bio_op_flagged(bio, ELASTIO_SNAP_PASSTHROUGH)){
 #ifdef NETLINK_DEBUG
-			trace_event_bio(EVENT_BIO_PASSTHROUGH, bio, 0);
+			trace_event_bio(EVENT_BIO_CALL_ORIG, bio, 0);
 #endif
 			elastio_snap_bio_op_clear_flag(bio, ELASTIO_SNAP_PASSTHROUGH);
 			goto call_orig;
@@ -4280,7 +4304,7 @@ static MRF_RETURN_TYPE tracing_mrf(struct request_queue *q, struct bio *bio){
 call_orig:
 
 #ifdef NETLINK_DEBUG
-	trace_event_bio(EVENT_BIO_PASSTHROUGH, bio, 0);
+	trace_event_bio(EVENT_BIO_CALL_ORIG, bio, 0);
 #endif
 
 #ifdef USE_BDOPS_SUBMIT_BIO
@@ -4318,6 +4342,11 @@ static MRF_RETURN_TYPE snap_mrf(struct request_queue *q, struct bio *bio){
 static MRF_RETURN_TYPE snap_mrf(struct bio *bio){
 	struct snap_device *dev = elastio_snap_bio_bi_disk(bio)->queue->queuedata;
 #endif
+
+#ifdef NETLINK_DEBUG
+	trace_event_bio(EVENT_BIO_INCOMING_SNAP_MRF, bio, 0);
+#endif
+
 	//if a write request somehow gets sent in, discard it
 	if(bio_data_dir(bio)){
 		elastio_snap_bio_endio(bio, -EOPNOTSUPP);
