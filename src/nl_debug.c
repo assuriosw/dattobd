@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
+
+/*
+ * Copyright (C) 2023 Elastio Software Inc.
+ *
+ */
+
 #include "nl_debug.h"
 
 static uint64_t seq_num = 1;

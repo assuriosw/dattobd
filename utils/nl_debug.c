@@ -3,7 +3,6 @@
 /*
  * Copyright (C) 2023 Elastio Software Inc.
  *
- * Author: Stanislav Barantsev
  */
 
 
@@ -161,9 +160,9 @@ void usage()
 			" -s <sector> : starting sector filter\n"
 			" -e <sector> : ending sector filter\n"
 			" -m <bio/cow/all> : mute output\n"
-			" -c : disable coloring"
-			" -r : show read-only IO"
-			" -w : show write-only IO"
+			" -c : disable coloring\n"
+			" -r : show read-only IO\n"
+			" -w : show write-only IO\n"
 			" -h : this help message\n"
 			);
 }
