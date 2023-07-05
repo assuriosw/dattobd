@@ -46,9 +46,13 @@ struct event_desc {
 #define CWHT  "\x1B[37m"
 #define CRESET "\033[0m"
 
+#define CLIENT_ADDR "127.0.0.1"
+#define CLIENT_PORT 20794
+
 struct event_desc event_text_desc[] = {
 		{ EVENT_DRIVER_INIT, KIND_EVENT_GENERIC, TO_STR(EVENT_DRIVER_INIT) },
 		{ EVENT_DRIVER_DEINIT, KIND_EVENT_GENERIC, TO_STR(EVENT_DRIVER_DEINIT) },
+		{ EVENT_DRIVER_ERROR, KIND_EVENT_GENERIC, TO_STR(EVENT_DRIVER_ERROR) },
 		{ EVENT_SETUP_SNAPSHOT, KIND_EVENT_GENERIC, TO_STR(EVENT_SETUP_SNAPSHOT) },
 		{ EVENT_SETUP_UNVERIFIED_SNAP, KIND_EVENT_GENERIC, TO_STR(EVENT_SETUP_UNVERIFIED_SNAP) },
 		{ EVENT_SETUP_UNVERIFIED_INC, KIND_EVENT_GENERIC, TO_STR(EVENT_SETUP_UNVERIFIED_INC) },
@@ -139,15 +143,22 @@ static bool is_cow_event(enum msg_type_t type)
 	return false;
 }
 
+static bool is_bio_write(const struct msg_header_t *msg)
+{
+	return msg->params.id && msg->params.flags & 0x01;
+}
+
 void usage()
 {
 	printf("elastio-snap driver debugging utility\n");
 	printf(	"Usage:\n"
 			" -s <sector> : starting sector filter\n"
 			" -e <sector> : ending sector filter\n"
-			" -m : mute all output\n"
-			" -c : mute all COW file events\n"
-			" -h : this usage\n\n"
+			" -m <bio/cow/all> : mute output\n"
+			" -c : disable coloring"
+			" -r : show read-only IO"
+			" -w : show write-only IO"
+			" -h : this help message\n"
 			);
 }
 
@@ -157,13 +168,17 @@ int main(int argc, char **argv)
 	struct sockaddr_in server_addr;
 	uint64_t sector_start = 0;
 	uint64_t sector_end = ~0ULL;
-	bool mute = false;
+	bool mute_all = false;
+	bool coloring = true;
+	bool read_only = false;
+	bool write_only = false;
+	bool mute_bio_events = false;
 	bool mute_cow_events = false;
 	int option;
 
 	signal(SIGINT, int_handler);
 
-	while ((option = getopt(argc, argv, "s:e:mch?")) != -1) {
+	while ((option = getopt(argc, argv, "s:e:m:crwh?")) != -1) {
 		switch (option)
 		{
 			case 's':
@@ -173,12 +188,29 @@ int main(int argc, char **argv)
 				sector_end = strtol(optarg, NULL, 10);
 				break;
 			case 'm':
-				mute = true;
-				printf("Output muted\n");
+				if (!strcmp(optarg, "all")) {
+					mute_all = true;
+					printf("Output muted\n");
+				}
+				else if (!strcmp(optarg, "cow")) {
+					mute_cow_events = true;
+					printf("COW events muted\n");
+				}
+				else if (!strcmp(optarg, "bio")) {
+					mute_bio_events = true;
+					printf("BIO events muted\n");
+				}
 				break;
 			case 'c':
-				mute_cow_events = true;
-				printf("COW events muted\n");
+				coloring = false;
+				break;
+			case 'r':
+				read_only = true;
+				printf("Filtering read only bio requests\n");
+				break;
+			case 'w':
+				printf("Filtering write only bio requests\n");
+				write_only = true;
 				break;
 			case 'h':
 			case '?':
@@ -188,26 +220,36 @@ int main(int argc, char **argv)
 		}
 	}
 
-		if (sector_end < sector_start) {
-			printf("Sector range is invalid\n");
-			return -1;
-		} else {
-			if (sector_end == ~0ULL)
-				printf("Filtering sector range: %lu - max\n", sector_start);
-			else
-				printf("Filtering sector range: %lu - %lu\n", sector_start, sector_end);
-		}
+	if (read_only && write_only) {
+		printf("Invalid filter combination\n");
+		return -1;
+	}
+
+	if (sector_end < sector_start) {
+		printf("Sector range is invalid\n");
+		return -1;
+	} else {
+		if (sector_end == ~0ULL)
+			printf("Filtering sector range: %lu - max\n", sector_start);
+		else
+			printf("Filtering sector range: %lu - %lu\n", sector_start, sector_end);
+	}
 
 	sock_fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_USERSOCK);
+	if (sock_fd < 0){
+		printf("Error while creating netlink socket\n");
+		return -1;
+	}
+
 	proxy_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if(proxy_fd < 0){
-		printf("Error while creating socket\n");
+	if (proxy_fd < 0){
+		printf("Error while creating proxy socket\n");
 		return -1;
 	}
 
 	server_addr.sin_family = AF_INET;
-	server_addr.sin_port = htons(20794);
-	server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	server_addr.sin_port = htons(CLIENT_PORT);
+	server_addr.sin_addr.s_addr = inet_addr(CLIENT_ADDR);
 
 	memset(&user_sockaddr, 0, sizeof(user_sockaddr));
 	user_sockaddr.nl_family = AF_NETLINK;
@@ -223,7 +265,7 @@ int main(int argc, char **argv)
 	int flags = fcntl(sock_fd, F_GETFL);
 	fcntl(sock_fd, F_SETFL, flags | O_NONBLOCK);
 
-	int rcvbuf = 500000000;
+	int rcvbuf = 500 * 1024 * 1024;
 	if (setsockopt(sock_fd, SOL_SOCKET, SO_RCVBUFFORCE,
 				&rcvbuf, sizeof rcvbuf)) {
 		printf("Couldn't update socket rx buf\n");
@@ -266,32 +308,51 @@ int main(int argc, char **argv)
 		for (i = 0; i < retval; i++) {
 			struct msg_header_t *msg = (struct msg_header_t *)NLMSG_DATA(nl_msghdr[i]);
 
-			if (mute)
+			if (mute_all)
+				goto skip_print;
+
+			if (is_cow_event(msg->type) && mute_cow_events)
+				goto skip_print;
+
+			if (is_bio_event(msg->type) && mute_bio_events)
 				goto skip_print;
 
 			if (is_bio_event(msg->type) && msg->params.id &&
 					(msg->params.sector < sector_start || msg->params.sector > sector_end))
 				goto skip_print;
 
-			if (is_cow_event(msg->type) && mute_cow_events)
+			if (is_bio_write(msg) && read_only)
 				goto skip_print;
 
-			if (is_generic_event(msg->type))
-				printf(CYEL);
-			else if (is_bio_event(msg->type))
-				printf(CCYN);
-			else if (is_cow_event(msg->type))
-				printf(CMAG);
+			if (!is_bio_write(msg) && write_only)
+				goto skip_print;
 
-			printf("[%10lu] [%16lu] %32.32s [%2d] ", msg->seq_num, msg->timestamp, event2str(msg->type), msg->type);
+			if (coloring) {
+				if (is_generic_event(msg->type)) {
+					if (msg->type == EVENT_DRIVER_ERROR)
+						printf(CRED);
+					else
+						printf(CYEL);
+				}
+				else if (is_bio_event(msg->type))
+					printf(CCYN);
+				else if (is_cow_event(msg->type))
+					printf(CMAG);
+			}
+
+			printf("[%6lu] [%16lu] %32.32s [%2d] ", msg->seq_num, msg->timestamp, event2str(msg->type), msg->type);
 			printf("%32.32s(), line %4d", msg->source.func, msg->source.line);
 
 			if (msg->params.id) {
-				printf(", bio ID: %16lx, sector: %16lu, size: %10d", msg->params.id, msg->params.sector, msg->params.size);
+				printf(", bio ID: %16lx, R/W: %2.2s, sector: %10lu, size: %10d", msg->params.id, is_bio_write(msg) ? "W" : "R", msg->params.sector, msg->params.size);
 			}
 
-			printf(", priv1: %10lu, priv2: %10lu", msg->params.priv1, msg->params.priv2);
-			printf(CRESET "\n");
+			printf(", priv1: %10ld, priv2: %10ld", msg->params.priv1, msg->params.priv2);
+
+			if (coloring)
+				printf(CRESET);
+
+			printf("\n");
 
 skip_print:
 			if(sendto(proxy_fd, msg, msgs[i].msg_len, 0,
@@ -312,7 +373,13 @@ skip_print:
 
 			if (msg->seq_num != last_seq_num + 1) {
 				packets_lost += (msg->seq_num - last_seq_num - 1);
-				printf(CRED "DATA DROPPED: last seq_num: %lu, seq_num received: %lu\n" CRESET, last_seq_num, msg->seq_num);
+				if (coloring)
+					printf(CRED);
+
+				printf("DATA DROPPED: last seq_num: %lu, seq_num received: %lu\n", last_seq_num, msg->seq_num);
+
+				if (coloring)
+					printf(CRESET);
 				seq_num_errors++;
 			}
 

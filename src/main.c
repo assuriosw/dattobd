@@ -3035,6 +3035,9 @@ static int cow_read_mapping(struct cow_manager *cm, uint64_t pos, uint64_t *out)
 
 error:
 	LOG_ERROR(ret, "error reading cow mapping");
+#ifdef NETLINK_DEBUG
+	trace_event_generic(EVENT_DRIVER_ERROR, ret);
+#endif
 	return ret;
 }
 
@@ -3072,6 +3075,9 @@ static int __cow_write_mapping(struct cow_manager *cm, uint64_t pos, uint64_t va
 
 error:
 	LOG_ERROR(ret, "error writing cow mapping");
+#ifdef NETLINK_DEBUG
+	trace_event_generic(EVENT_DRIVER_ERROR, ret);
+#endif
 	return ret;
 }
 #define __cow_write_current_mapping(cm, pos) __cow_write_mapping(cm, pos, (cm)->curr_pos)
@@ -3112,6 +3118,9 @@ static int __cow_write_data(struct cow_manager *cm, void *buf){
 
 error:
 	LOG_ERROR(ret, "error writing cow data");
+#ifdef NETLINK_DEBUG
+	trace_event_generic(EVENT_DRIVER_ERROR, ret);
+#endif
 	return ret;
 }
 
@@ -3154,6 +3163,9 @@ static int cow_read_data(struct cow_manager *cm, void *out_buf, uint64_t block_p
 	ret = file_read(cm, read_buf, (block_pos * COW_BLOCK_SIZE), COW_BLOCK_SIZE);
 	if(ret){
 		LOG_ERROR(ret, "error reading cow data");
+#ifdef NETLINK_DEBUG
+		trace_event_generic(EVENT_DRIVER_ERROR, ret);
+#endif
 		kfree(read_buf);
 		return ret;
 	}
@@ -3553,6 +3565,11 @@ static int bio_make_read_clone(struct block_device *bdev, struct bio_set *bs, st
 
 error:
 	if(ret) LOG_ERROR(ret, "error creating read clone of write bio");
+
+#ifdef NETLINK_DEBUG
+	trace_event_generic(EVENT_DRIVER_ERROR, ret);
+#endif
+
 	if(new_bio) bio_free_clone(new_bio);
 
 	*bytes_added = 0;
@@ -3642,6 +3659,9 @@ static int snap_handle_read_bio(const struct snap_device *dev, struct bio *bio){
 		ret = elastio_snap_submit_bio_wait(bio);
 		if(ret){
 			LOG_ERROR(ret, "error reading from base device for read");
+#ifdef NETLINK_DEBUG
+			trace_event_generic(EVENT_DRIVER_ERROR, ret);
+#endif
 			goto out;
 		}
 
@@ -3712,6 +3732,11 @@ out:
 #endif
 
 	if(ret) {
+
+#ifdef NETLINK_DEBUG
+		trace_event_generic(EVENT_DRIVER_ERROR, ret);
+#endif
+
 		LOG_ERROR(ret, "error handling read bio");
 		bio_idx(bio) = bio_orig_idx;
 		bio_size(bio) = bio_orig_size;
@@ -3779,7 +3804,7 @@ static int snap_handle_write_bio(const struct snap_device *dev, struct bio *bio)
 error:
 
 #ifdef NETLINK_DEBUG
-		trace_event_bio(EVENT_BIO_HANDLE_WRITE_DONE, bio, 1);
+	trace_event_generic(EVENT_DRIVER_ERROR, ret);
 #endif
 
 	LOG_ERROR(ret, "error handling write bio");
@@ -4026,6 +4051,9 @@ static void __on_bio_read_complete(struct bio *bio, int err){
 
 error:
 	LOG_ERROR(ret, "error during bio read complete callback");
+#ifdef NETLINK_DEBUG
+	trace_event_generic(EVENT_DRIVER_ERROR, ret);
+#endif
 	tracer_set_fail_state(dev, ret);
 	tp_put(tp);
 	bio_free_clone(bio);
@@ -4076,6 +4104,9 @@ static int memory_is_too_low(struct snap_device *dev) {
 	ret = tracer_read_fail_state(dev);
 	if (ret != -ENOMEM && ((si_mem_available() * 100) / totalram) < LOW_MEMORY_FAIL_PERCENT) {
 		LOG_WARN("physical memory usage has exceeded %d%% threshold. cow file update is stopped", (100 - LOW_MEMORY_FAIL_PERCENT));
+#ifdef NETLINK_DEBUG
+	trace_event_generic(EVENT_DRIVER_ERROR, ret);
+#endif
 		ret = -ENOMEM;
 		tracer_set_fail_state(dev, ret);
 	}
@@ -4145,6 +4176,10 @@ retry:
 	//
 	// submit the bios
 	//
+#ifdef NETLINK_DEBUG
+	trace_event_bio(EVENT_BIO_CALL_ORIG, new_bio, 0);
+#endif
+
 #ifdef USE_BDOPS_SUBMIT_BIO
 	// send bio by calling original mrf when its present or call an ordinal submit_bio instead
 	if (dev->sd_orig_mrf) {
@@ -4248,6 +4283,10 @@ out:
 		tracer_set_fail_state(dev, ret);
 		ret = 0;
 	}
+
+#ifdef NETLINK_DEBUG
+	trace_event_bio(EVENT_BIO_CALL_ORIG, bio, 0);
+#endif
 
 	//call the original mrf
 	ret = elastio_snap_call_mrf(dev->sd_orig_mrf, bio);
@@ -4829,6 +4868,9 @@ static int __tracer_setup_cow(struct snap_device *dev, struct block_device *bdev
 
 error:
 	LOG_ERROR(ret, "error setting up cow manager");
+#ifdef NETLINK_DEBUG
+	trace_event_generic(EVENT_DRIVER_ERROR, ret);
+#endif
 	if(open_method != 3) __tracer_destroy_cow_free(dev);
 	if(cow_path_full != cow_path) kfree(cow_path_full);
 	return ret;

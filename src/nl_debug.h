@@ -12,6 +12,7 @@
 enum msg_type_t {
 	EVENT_DRIVER_INIT,
 	EVENT_DRIVER_DEINIT,
+	EVENT_DRIVER_ERROR,
 	EVENT_SETUP_SNAPSHOT,
 	EVENT_SETUP_UNVERIFIED_SNAP,
 	EVENT_SETUP_UNVERIFIED_INC,
@@ -40,7 +41,6 @@ enum msg_type_t {
 	EVENT_COW_WRITE_MAPPING,
 	EVENT_COW_READ_DATA,
 	EVENT_COW_WRITE_DATA,
-	EVENT_DEBUG,
 	EVENT_LAST
 };
 
@@ -48,6 +48,7 @@ struct params_t {
 	uint64_t id;
 	uint32_t size; // in sectors
 	uint64_t sector;
+	uint8_t flags;
 	uint64_t priv1;
 	uint64_t priv2;
 } __attribute__((packed));
@@ -74,6 +75,7 @@ struct msg_header_t {
 	if (_bio) { 							\
 		params.id = (uint64_t)(_bio); 		\
 		params.size = bio_size(_bio); 		\
+		params.flags = bio_data_dir(_bio);	\
 		params.sector = bio_sector(_bio); 	\
 	} 										\
 											\
