@@ -25,14 +25,16 @@ int nl_send_event(enum msg_type_t type, const char *func, int line, struct param
 	msg->type = type;
 	msg->timestamp = ktime_get();
 	msg->seq_num = seq_num;
+	seq_num++;
+
 	if (func) {
 		msg->source.line = line;
 		strncpy(msg->source.func, func, sizeof(msg->source.func));
 	}
+
 	memcpy(&msg->params, params, sizeof(*params));
 
 	nlmsg_multicast(nl_sock, skb, 0, NL_MCAST_GROUP, GFP_ATOMIC);
-	seq_num++;
 	spin_unlock_bh(&nl_spinlock);
 	return 0;
 }

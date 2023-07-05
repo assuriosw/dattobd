@@ -3023,7 +3023,7 @@ static int cow_read_mapping(struct cow_manager *cm, uint64_t pos, uint64_t *out)
 	*out = cm->sects[sect_idx].mappings[sect_pos];
 
 #ifdef NETLINK_DEBUG
-		trace_event_cow(EVENT_COW_READ_MAPPING, pos, *out);
+	trace_event_cow(EVENT_COW_READ_MAPPING, pos, *out);
 #endif
 
 	if(cm->allocated_sects > cm->allowed_sects){
@@ -3061,7 +3061,7 @@ static int __cow_write_mapping(struct cow_manager *cm, uint64_t pos, uint64_t va
 	if(cm->version >= COW_VERSION_CHANGED_BLOCKS && !cm->sects[sect_idx].mappings[sect_pos]) cm->nr_changed_blocks++;
 
 #ifdef NETLINK_DEBUG
-		trace_event_cow(EVENT_COW_WRITE_MAPPING, pos, val);
+	trace_event_cow(EVENT_COW_WRITE_MAPPING, pos, val);
 #endif
 
 	cm->sects[sect_idx].mappings[sect_pos] = val;
@@ -3106,7 +3106,7 @@ static int __cow_write_data(struct cow_manager *cm, void *buf){
 	}
 
 #ifdef NETLINK_DEBUG
-		trace_event_cow(EVENT_COW_WRITE_DATA, 0, 0);
+	trace_event_cow(EVENT_COW_WRITE_DATA, 0, 0);
 #endif
 
 	ret = file_write(cm, buf, curr_size, COW_BLOCK_SIZE);
@@ -3155,7 +3155,7 @@ static int cow_read_data(struct cow_manager *cm, void *out_buf, uint64_t block_p
 	char *read_buf = kzalloc(COW_BLOCK_SIZE, GFP_KERNEL);
 
 #ifdef NETLINK_DEBUG
-		trace_event_cow(EVENT_COW_READ_DATA, 0, 0);
+	trace_event_cow(EVENT_COW_READ_DATA, 0, 0);
 #endif
 
 	if(block_off >= COW_BLOCK_SIZE) return -EINVAL;
@@ -3559,7 +3559,7 @@ static int bio_make_read_clone(struct block_device *bdev, struct bio_set *bs, st
 	*bytes_added = total;
 	*bio_out = new_bio;
 #ifdef NETLINK_DEBUG
-		trace_event_bio(EVENT_BIO_CLONED, new_bio, 0);
+	trace_event_bio(EVENT_BIO_CLONED, new_bio, 0);
 #endif
 	return 0;
 
@@ -3728,7 +3728,7 @@ static int snap_handle_read_bio(const struct snap_device *dev, struct bio *bio){
 out:
 
 #ifdef NETLINK_DEBUG
-		trace_event_bio(EVENT_BIO_HANDLE_READ_DONE, bio, 0);
+	trace_event_bio(EVENT_BIO_HANDLE_READ_DONE, bio, 0);
 #endif
 
 	if(ret) {
@@ -3796,7 +3796,7 @@ static int snap_handle_write_bio(const struct snap_device *dev, struct bio *bio)
 	}
 
 #ifdef NETLINK_DEBUG
-		trace_event_bio(EVENT_BIO_HANDLE_WRITE_DONE, bio, 0);
+	trace_event_bio(EVENT_BIO_HANDLE_WRITE_DONE, bio, 0);
 #endif
 
 	return 0;
@@ -3992,7 +3992,7 @@ static void __on_bio_read_complete(struct bio *bio, int err){
 #endif
 
 #ifdef NETLINK_DEBUG
-		trace_event_bio(EVENT_BIO_READ_COMPLETE, bio, 0);
+	trace_event_bio(EVENT_BIO_READ_COMPLETE, bio, 0);
 #endif
 
 	//check for read errors
@@ -4042,7 +4042,7 @@ static void __on_bio_read_complete(struct bio *bio, int err){
 	smp_wmb();
 
 #ifdef NETLINK_DEBUG
-		trace_event_bio(EVENT_BIO_QUEUED, bio, 0);
+	trace_event_bio(EVENT_BIO_QUEUED, bio, 0);
 #endif
 
 	tp_put(tp);
@@ -4105,7 +4105,7 @@ static int memory_is_too_low(struct snap_device *dev) {
 	if (ret != -ENOMEM && ((si_mem_available() * 100) / totalram) < LOW_MEMORY_FAIL_PERCENT) {
 		LOG_WARN("physical memory usage has exceeded %d%% threshold. cow file update is stopped", (100 - LOW_MEMORY_FAIL_PERCENT));
 #ifdef NETLINK_DEBUG
-	trace_event_generic(EVENT_DRIVER_ERROR, ret);
+		trace_event_generic(EVENT_DRIVER_ERROR, ret);
 #endif
 		ret = -ENOMEM;
 		tracer_set_fail_state(dev, ret);
@@ -4597,7 +4597,7 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 		if(new_mrf) elastio_snap_set_bd_mrf(bdev, new_mrf);
 #endif
 #ifdef NETLINK_DEBUG
-	trace_event_generic(EVENT_TRACING_STARTED, 0);
+		trace_event_generic(EVENT_TRACING_STARTED, 0);
 #endif
 	}else{
 		LOG_DEBUG("ending tracing");
@@ -4615,7 +4615,7 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 		smp_wmb();
 
 #ifdef NETLINK_DEBUG
-	trace_event_generic(EVENT_TRACING_FINISHED, 0);
+		trace_event_generic(EVENT_TRACING_FINISHED, 0);
 #endif
 	}
 

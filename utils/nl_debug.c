@@ -98,6 +98,12 @@ static void int_handler(int val) {
 	exit(0);
 }
 
+static void u64_to_timespec(uint64_t ktime, struct timespec *tv)
+{
+	tv->tv_sec = ktime / 1000000000;
+	tv->tv_nsec = ktime % 1000000000;
+}
+
 static const char *event2str(enum msg_type_t type)
 {
 	int i;
@@ -279,10 +285,12 @@ int main(int argc, char **argv)
 
 	while (true) {
 		int i;
+		int ret;
 		struct iovec iov[MAX_MSGS];
 		struct mmsghdr msgs[MAX_MSGS];
 		struct timespec timeout;
 		struct nlmsghdr *nl_msghdr[MAX_MSGS];
+		struct timespec tspec;
 
 		memset(msgs, 0, sizeof(msgs));
 
@@ -300,12 +308,12 @@ int main(int argc, char **argv)
 		timeout.tv_sec = 0;
 		timeout.tv_nsec = 500000;
 
-		int retval = recvmmsg(sock_fd, msgs, MAX_MSGS, 0, &timeout);
+		ret = recvmmsg(sock_fd, msgs, MAX_MSGS, 0, &timeout);
 
-		if (retval == -1)
+		if (ret == -1)
 			goto out;
 
-		for (i = 0; i < retval; i++) {
+		for (i = 0; i < ret; i++) {
 			struct msg_header_t *msg = (struct msg_header_t *)NLMSG_DATA(nl_msghdr[i]);
 
 			if (mute_all)
@@ -340,7 +348,8 @@ int main(int argc, char **argv)
 					printf(CMAG);
 			}
 
-			printf("[%6lu] [%16lu] %32.32s [%2d] ", msg->seq_num, msg->timestamp, event2str(msg->type), msg->type);
+			u64_to_timespec(msg->timestamp, &tspec);
+			printf("[%6lu] [%7ld:%9ld] %32.32s [%2d] ", msg->seq_num, tspec.tv_sec, tspec.tv_nsec, event2str(msg->type), msg->type);
 			printf("%32.32s(), line %4d", msg->source.func, msg->source.line);
 
 			if (msg->params.id) {
