@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
+
+/*
+ * Copyright (C) 2023 Elastio Software Inc.
+ *
+ */
+
 #ifdef KERNEL_MODULE
 #include <net/sock.h>
 #include <linux/netlink.h>
