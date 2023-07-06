@@ -115,15 +115,6 @@ jobs:
           vagrant reload ${{env.INSTANCE_NAME}}
         working-directory: ${{env.BOX_DIR}}
 
-      # Please refer to https://github.com/elastio/devboxes/pull/230
-      - name: Download debug package for Debian 11 and Debian 12
-        if: "${{ (matrix.distro == 'debian11' || matrix.distro == 'debian12') && matrix.arch == 'arm64' }}"
-        run: |
-          vagrant ssh ${{env.INSTANCE_NAME}} -c '
-            sudo apt-get install -y linux-image-$(uname -r)-dbg' || true
-          sleep 5
-        working-directory: ${{env.BOX_DIR}}
-
       # For some reason we have too new (unofficial) xfsprogs installed on Debian 8. Replace them with the official ones.
       - name: Reinstall xfsprogs on Debian 8
         if: "${{ matrix.distro == 'debian8' }}"
