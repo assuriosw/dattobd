@@ -77,7 +77,7 @@ class TestSnapshot(DeviceTestCase):
         info = elastio_snap.info(self.minor)
         start_nr = info["nr_changed_blocks"]
 
-        util.dd("/dev/urandom", testfile, 1, bs="512")
+        util.dd("/dev/urandom", testfile, 1, bs="1M")
 
         self.addCleanup(os.remove, testfile)
         os.sync()
