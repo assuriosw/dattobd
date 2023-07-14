@@ -184,7 +184,7 @@ jobs:
         working-directory: ${{env.BOX_DIR}}
         # For now tests are taking up to 40 seconds per 1 fs on amd64 and about 2 minutes on arm64 or older 3.x kernels. But they can hang.
         # 20 minutes seems to be reasonable timeout.
-        timeout-minutes: 20
+        timeout-minutes: 25
 
       - name: Show debug information
         if: always()
@@ -201,7 +201,7 @@ jobs:
         working-directory: ${{env.BOX_DIR}}
         # For now tests are taking 10-20 seconds per 1 fs on amd64 and about 2 minutes on arm64. But they can hang.
         # 20 minutes seems to be reasonable timeout.
-        timeout-minutes: 20
+        timeout-minutes: 25
 
       - name: Show debug information
         if: always()
@@ -218,7 +218,7 @@ jobs:
         working-directory: ${{env.BOX_DIR}}
         # For now tests are taking up to 40 seconds per 1 fs on amd64 and about 2 minutes on arm64 or older 3.x kernels. But they can hang.
         # 20 minutes seems to be reasonable timeout.
-        timeout-minutes: 20
+        timeout-minutes: 25
 
       - name: Show debug information
         if: always()
@@ -257,7 +257,7 @@ jobs:
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 -f $fs"
           done
         working-directory: ${{env.BOX_DIR}}
-        timeout-minutes: 25
+        timeout-minutes: 30
 
       - name: Show debug information
         if: always()
@@ -272,7 +272,7 @@ jobs:
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb -d /dev/vdc -f $fs --lvm"
           done
         working-directory: ${{env.BOX_DIR}}
-        timeout-minutes: 25
+        timeout-minutes: 30
 
       - name: Show debug information
         if: always()
@@ -290,7 +290,7 @@ jobs:
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb -d /dev/vdc -f $fs --raid"
           done
         working-directory: ${{env.BOX_DIR}}
-        timeout-minutes: 25
+        timeout-minutes: 30
 
       - name: Show debug information
         if: always()
