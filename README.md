@@ -96,3 +96,13 @@ The current status of the elastio-snap driver can be read from the file `/proc/e
 	* 5 = unverified snapshot
 * `nr_changed_blocks`: The number of blocks that have changed since the last snapshot.
 * `version`: Version of the on-disk format of the COW header.
+
+## Debugging
+
+There is a possibility to trace all driver events, including bio request tracing, in real-time. To build the driver with debug mode, use an additional flag:
+
+```
+sudo make NETLINK_DEBUG=y
+```
+
+Then use `nl_debug` utility to display the events.
