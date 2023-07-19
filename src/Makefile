@@ -20,7 +20,7 @@ endif
 FEATURE_TEST_BUILD_DIR := configure-tests/feature-tests/build
 
 default:
-	if [ ! -f kernel-config.h ] || tail -1 kernel-config.h | grep -qv '#endif'; then mkdir $(FEATURE_TEST_BUILD_DIR); ./genconfig.sh "$(KERNELVERSION)" "$(MFLAGS)"; fi;
+	if [ ! -f kernel-config.h ] || tail -1 kernel-config.h | grep -qv '#endif'; then ./genconfig.sh "$(KERNELVERSION)"; fi;
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
 
 clean:
