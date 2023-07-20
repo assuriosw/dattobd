@@ -77,13 +77,6 @@ jobs:
       - name: Check ENV
         run: .github/scripts/check_env.sh
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1-node16
-        with:
-          aws-region: ${{ env.AWS_DEFAULT_REGION }}
-          role-to-assume: ${{ secrets.ASSURIODEV_OIDC_AWS_ROLE_ARN }}
-          role-duration-seconds: 21600  # 6 hours
-
       - name: Start a box
         if: always()
         run: .github/scripts/start_box.sh
@@ -328,6 +321,13 @@ jobs:
             rm -f ${TEST_IMAGE}
           done
 
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1-node16
+        with:
+          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+          role-to-assume: ${{ secrets.ASSURIODEV_OIDC_AWS_ROLE_ARN }}
+          # role-duration-seconds: 21600  # 6 hours
+
       - name: Upload artifacts
         if: ${{ github.event_name == 'push' }}
         run: |
@@ -367,7 +367,6 @@ jobs:
         with:
           aws-region: ${{ env.AWS_DEFAULT_REGION }}
           role-to-assume: ${{ secrets.ASSURIODEV_OIDC_AWS_ROLE_ARN }}
-          role-duration-seconds: 21600  # 6 hours
 
       - name: Make manifest
         run: echo $GITHUB_RUN_NUMBER > latest && cat latest | grep -E '^[0-9]+$'
