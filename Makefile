@@ -10,7 +10,7 @@ export BASE_DIR = $(abspath .)
 EUID := $(shell id -u -r)
 
 BUILDDIR := $(CURDIR)/pkgbuild
-KERNEL_CONFIG := src/kernel-config.h
+KERNEL_CONFIG := $(BASE_DIR)/src/kernel-config.h
 
 # Flags to pass to debbuild/rpmbuild
 PKGBUILDFLAGS := --define "_topdir $(BUILDDIR)" -ba --with devmode
@@ -29,11 +29,11 @@ ifneq ($(EUID),0)
 	@exit 1
 endif
 
-driver: check_root
-	$(MAKE) -C src
-
 $(KERNEL_CONFIG):
 	$(BASE_DIR)/src/genconfig.sh "$(shell uname -r)"
+
+driver: $(KERNEL_CONFIG) check_root
+	$(MAKE) -C src
 
 library-shared: $(KERNEL_CONFIG)
 	$(MAKE) -C lib CCFLAGS="$(CCFLAGS) -I$(BASE_DIR)/src" shared
