@@ -90,7 +90,7 @@ def partition(disk, part_count = 0):
         if end + part_size_percent > 100: end = 100
         cmd.append("mkpart " + part_type + " {}% {}%".format(start, end))
 
-    subprocess.check_call(cmd, timeout=30)
+    subprocess.check_call(cmd, timeout=60)
     partprobe(disk)
     settle()
 
