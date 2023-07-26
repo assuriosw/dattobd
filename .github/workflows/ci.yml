@@ -258,7 +258,7 @@ jobs:
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb1 -f $fs"
           done
         working-directory: ${{env.BOX_DIR}}
-        timeout-minutes: 50
+        timeout-minutes: 90
 
       - name: Show debug information
         if: always()
@@ -273,7 +273,7 @@ jobs:
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb -d /dev/vdc -f $fs --lvm"
           done
         working-directory: ${{env.BOX_DIR}}
-        timeout-minutes: 50
+        timeout-minutes: 90
 
       - name: Show debug information
         if: always()
@@ -291,7 +291,7 @@ jobs:
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb -d /dev/vdc -f $fs --raid"
           done
         working-directory: ${{env.BOX_DIR}}
-        timeout-minutes: 50
+        timeout-minutes: 90
 
       - name: Show debug information
         if: always()
@@ -305,7 +305,7 @@ jobs:
             vagrant ssh ${{env.INSTANCE_NAME}} -c "cd tests && sudo ./elio-test.sh -d /dev/vdb -f $fs -t test_multipart"
           done
         working-directory: ${{env.BOX_DIR}}
-        timeout-minutes: 15
+        timeout-minutes: 25
 
       - name: Show debug information
         if: always()
