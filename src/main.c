@@ -999,6 +999,7 @@ struct tracing_params{
 #ifdef USE_BDOPS_SUBMIT_BIO
 struct tracing_ops {
 	struct block_device_operations *bd_ops;
+	bool has_submit_bio;
 	atomic_t refs;
 };
 #endif
@@ -3401,6 +3402,7 @@ static int tracing_ops_alloc(struct snap_device *dev) {
 
 	// Set tracing_mrf as submit_bio. All other content is already there copied from the original structure.
 	trops->bd_ops->submit_bio = tracing_mrf;
+	trops->has_submit_bio = dev->sd_base_dev->bd_has_submit_bio;
 	atomic_set(&trops->refs, 1);
 	dev->sd_tracing_ops = trops;
 
@@ -4552,9 +4554,9 @@ static int __tracer_should_reset_mrf(const struct snap_device *dev){
 }
 
 #ifndef USE_BDOPS_SUBMIT_BIO
-static int __tracer_transition_tracing(struct snap_device *dev, struct block_device *bdev, make_request_fn *new_mrf, struct snap_device **dev_ptr){
+static int __tracer_transition_tracing(struct snap_device *dev, struct block_device *bdev, make_request_fn *new_mrf, struct snap_device **dev_ptr, bool start){
 #else
-static int __tracer_transition_tracing(struct snap_device *dev, struct block_device *bdev, const struct block_device_operations *new_ops, struct snap_device **dev_ptr){
+static int __tracer_transition_tracing(struct snap_device *dev, struct block_device *bdev, const struct block_device_operations *new_ops, struct snap_device **dev_ptr, bool start){
 #endif
 	int ret;
 	struct super_block *origsb = elastio_snap_get_super(bdev);
@@ -4587,12 +4589,14 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 	}
 
 	smp_wmb();
-	if(dev){
+	if(start){
 		LOG_DEBUG("starting tracing");
 		if (dev_ptr) *dev_ptr = dev;
 		smp_wmb();
 #ifdef USE_BDOPS_SUBMIT_BIO
+
 		if(new_ops) elastio_snap_set_bd_ops(bdev, new_ops);
+		bdev->bd_has_submit_bio = true;
 #else
 		if(new_mrf) elastio_snap_set_bd_mrf(bdev, new_mrf);
 #endif
@@ -4607,11 +4611,12 @@ static int __tracer_transition_tracing(struct snap_device *dev, struct block_dev
 #elif defined USE_BDOPS_SUBMIT_BIO
 // Linux version 5.9+
 		if(new_ops) elastio_snap_set_bd_ops(bdev, new_ops);
+		bdev->bd_has_submit_bio = dev->sd_tracing_ops->has_submit_bio;
 #else
 // Linux version older than 5.8
 		if(new_mrf) elastio_snap_set_bd_mrf(bdev, new_mrf);
 #endif
-		if (dev_ptr) *dev_ptr = dev;
+		if (dev_ptr) *dev_ptr = NULL;
 		smp_wmb();
 
 #ifdef NETLINK_DEBUG
@@ -5212,14 +5217,14 @@ static void __tracer_destroy_tracing(struct snap_device *dev){
 
 			LOG_DEBUG("replacing make_request_fn");
 #ifdef USE_BDOPS_SUBMIT_BIO
-			__tracer_transition_tracing(NULL, dev->sd_base_dev, dev->sd_orig_ops, &snap_devices[dev->sd_minor]);
+			__tracer_transition_tracing(dev, dev->sd_base_dev, dev->sd_orig_ops, &snap_devices[dev->sd_minor], false);
 #else
-			__tracer_transition_tracing(NULL, dev->sd_base_dev, dev->sd_orig_mrf, &snap_devices[dev->sd_minor]);
+			__tracer_transition_tracing(dev, dev->sd_base_dev, dev->sd_orig_mrf, &snap_devices[dev->sd_minor], false);
 #endif
 		}
 		else {
 			LOG_DEBUG("no need to replace make_request_fn");
-			__tracer_transition_tracing(NULL, dev->sd_base_dev, NULL, &snap_devices[dev->sd_minor]);
+			__tracer_transition_tracing(dev, dev->sd_base_dev, NULL, &snap_devices[dev->sd_minor], false);
 		}
 
 		smp_wmb();
@@ -5245,7 +5250,6 @@ static void __tracer_setup_tracing_unverified(struct snap_device *dev, unsigned 
 	smp_wmb();
 }
 
-
 static int __tracer_setup_tracing(struct snap_device *dev, unsigned int minor){
 	int ret = 0;
 
@@ -5258,7 +5262,7 @@ static int __tracer_setup_tracing(struct snap_device *dev, unsigned int minor){
 	ret = find_orig_mrf(dev->sd_base_dev, &dev->sd_orig_mrf);
 	if(ret) goto error;
 
-	ret = __tracer_transition_tracing(dev, dev->sd_base_dev, tracing_mrf, &snap_devices[minor]);
+	ret = __tracer_transition_tracing(dev, dev->sd_base_dev, tracing_mrf, &snap_devices[minor], true);
 #else
 	if (!dev->sd_tracing_ops) {
 		// Multiple devices on the same disk are sharing block_device_operations struct.
@@ -5276,7 +5280,7 @@ static int __tracer_setup_tracing(struct snap_device *dev, unsigned int minor){
 			LOG_DEBUG("using already existing tracing ops for device with minor %i", minor);
 		}
 
-		ret = __tracer_transition_tracing(dev, dev->sd_base_dev, dev->sd_tracing_ops->bd_ops, &snap_devices[minor]);
+		ret = __tracer_transition_tracing(dev, dev->sd_base_dev, dev->sd_tracing_ops->bd_ops, &snap_devices[minor], true);
 	}
 	else {
 		LOG_DEBUG("device with minor %i already has sd_tracing_ops", minor);
