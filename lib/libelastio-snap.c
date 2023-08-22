@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#include <dirent.h>
 #include "libelastio-snap.h"
 
 #define RELOAD_SCRIPT_PATH		"/etc/elastio/dla"
@@ -29,6 +30,17 @@ struct reload_script_params {
 	char bdev[RELOAD_SCRIPT_BDEV_SIZE];
 	char cow[RELOAD_SCRIPT_COW_SIZE];
 };
+
+int check_reload_dir()
+{
+	DIR *dir = opendir(RELOAD_SCRIPT_PATH);
+	if (dir) {
+		closedir(dir);
+		return 0;
+	}
+
+	return 1;
+}
 
 int elastio_snap_get_reload_params(unsigned int minor, struct reload_script_params *rp)
 {
@@ -48,7 +60,7 @@ int elastio_snap_get_reload_params(unsigned int minor, struct reload_script_para
 	fread(buf, 1, BUF_SIZE, fd);
 	ret = sscanf(buf, "/usr/bin/elioctl reload-%s -c %u %s %s %u %s", mode, &rp->cache_size, rp->bdev, rp->cow, &rp->minor, ignore_errors);
 	if (ret != 5 && ret != 6) {
-		printf("reload script parsing error");
+		printf("reload script parsing error\n");
 		return -1;
 	}
 
@@ -85,14 +97,14 @@ int elastio_snap_set_reload_params(unsigned int minor, bool snapshot, const stru
 
 	ret = fwrite(buf, 1, strlen(buf) + 1, fd);
 	if (ret == -1) {
-		perror("write error");
+		printf("write error\n");
 		return 1;
 	}
 
 	fclose(fd);
 
 	if (chmod(filename, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | S_IXGRP ) == -1) {
-		perror("set permissions error");
+		printf("set permissions error\n");
 		return 1;
 	}
 
@@ -118,6 +130,11 @@ int elastio_snap_setup_snapshot(unsigned int minor, char *bdev, char *cow, unsig
 	if (ret == 0) {
 		struct reload_script_params rp;
 
+		if (check_reload_dir()) {
+			// if something deletes the path, restore it
+			system("mkdir -p " RELOAD_SCRIPT_PATH);
+		}
+
 		rp.minor = minor;
 		rp.cache_size = cache_size;
 		rp.ignore_snap_errors = ignore_snap_errors;
@@ -125,7 +142,7 @@ int elastio_snap_setup_snapshot(unsigned int minor, char *bdev, char *cow, unsig
 		strcpy(rp.cow, cow);
 
 		if (elastio_snap_set_reload_params(minor, true, &rp))
-			perror("update script params");
+			printf("update script params failed\n");
 	}
 
 	close(fd);
@@ -182,7 +199,7 @@ int elastio_snap_destroy(unsigned int minor){
 
 		snprintf(buf, sizeof(buf), "%s/reload_%d.sh", RELOAD_SCRIPT_PATH, minor);
 		if (remove(buf))
-			perror("remove script reload file");
+			printf("remove script reload file failed\n");
 	}
 
 	close(fd);
@@ -199,10 +216,10 @@ int elastio_snap_transition_incremental(unsigned int minor){
 	if (ret == 0) {
 		struct reload_script_params rp;
 		if (elastio_snap_get_reload_params(minor, &rp))
-			perror("get script params");
+			printf("get script params failed\n");
 
 		if (elastio_snap_set_reload_params(minor, false, &rp))
-			perror("update script params");
+			printf("update script params failed\n");
 	}
 
 	close(fd);
@@ -224,12 +241,12 @@ int elastio_snap_transition_snapshot(unsigned int minor, char *cow, unsigned lon
 	if (ret == 0) {
 		struct reload_script_params rp;
 		if (elastio_snap_get_reload_params(minor, &rp))
-			perror("get script params");
+			printf("get script params failed\n");
 
 		strcpy(rp.cow, cow);
 
 		if (elastio_snap_set_reload_params(minor, true, &rp))
-			perror("update script params");
+			printf("update script params failed\n");
 	}
 
 	close(fd);
@@ -250,12 +267,12 @@ int elastio_snap_reconfigure(unsigned int minor, unsigned long cache_size){
 	if (ret == 0) {
 		struct reload_script_params rp;
 		if (elastio_snap_get_reload_params(minor, &rp))
-			perror("get script params");
+			printf("get script params failed\n");
 
 		rp.cache_size = cache_size;
 
 		if (elastio_snap_set_reload_params(minor, rp.snapshot, &rp))
-			perror("update script params");
+			printf("update script params failed\n");
 	}
 
 	close(fd);
