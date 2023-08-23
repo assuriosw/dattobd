@@ -47,20 +47,25 @@ int elastio_snap_get_reload_params(unsigned int minor, struct reload_script_para
 	FILE *fd;
 	int ret;
 	char buf[BUF_SIZE];
-	char filename[BUF_SIZE];
+	char f_name[BUF_SIZE];
 	char mode[32] = { 0 };
 	char ignore_errors[16] = { 0 };
 
-	snprintf(filename, sizeof(filename), "%s/reload_%d.sh", RELOAD_SCRIPT_PATH, minor);
+	snprintf(f_name, sizeof(f_name), "%s/reload_%d.sh", RELOAD_SCRIPT_PATH, minor);
 
-	fd = fopen(filename, "r");
+	fd = fopen(f_name, "r");
 	if (!fd)
-		return 1;
+		return -1;
 
-	fread(buf, 1, BUF_SIZE, fd);
+	if (fread(buf, 1, BUF_SIZE, fd) == 0) {
+		fclose(fd);
+		return -1;
+	}
+
 	ret = sscanf(buf, "/usr/bin/elioctl reload-%s -c %u %s %s %u %s", mode, &rp->cache_size, rp->bdev, rp->cow, &rp->minor, ignore_errors);
 	if (ret != 5 && ret != 6) {
 		printf("reload script parsing error\n");
+		fclose(fd);
 		return -1;
 	}
 
@@ -82,14 +87,14 @@ int elastio_snap_set_reload_params(unsigned int minor, bool snapshot, const stru
 {
 	FILE* fd;
 	char buf[BUF_SIZE];
-	char filename[BUF_SIZE];
+	char f_name[BUF_SIZE];
 
-	snprintf(filename, sizeof(filename), "%s/reload_%d.sh", RELOAD_SCRIPT_PATH, minor);
+	snprintf(f_name, sizeof(f_name), "%s/reload_%d.sh", RELOAD_SCRIPT_PATH, minor);
 
 	memset(buf, 0, sizeof(buf));
-	fd = fopen(filename, "w");
+	fd = fopen(f_name, "w");
 	if (!fd)
-		return 1;
+		return -1;
 
 	int ret = snprintf(buf, sizeof(buf), "/usr/bin/elioctl reload-%s -c %u %s %s %u %s\n",
 			snapshot ? "snapshot" : "incremental", rp->cache_size, rp->bdev,
@@ -98,14 +103,15 @@ int elastio_snap_set_reload_params(unsigned int minor, bool snapshot, const stru
 	ret = fwrite(buf, 1, strlen(buf) + 1, fd);
 	if (ret == -1) {
 		printf("write error\n");
-		return 1;
+		fclose(fd);
+		return -1;
 	}
 
 	fclose(fd);
 
-	if (chmod(filename, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | S_IXGRP ) == -1) {
+	if (chmod(f_name, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | S_IXGRP ) == -1) {
 		printf("set permissions error\n");
-		return 1;
+		return -1;
 	}
 
 
@@ -131,8 +137,10 @@ int elastio_snap_setup_snapshot(unsigned int minor, char *bdev, char *cow, unsig
 		struct reload_script_params rp;
 
 		if (check_reload_dir()) {
-			// if something deletes the path, restore it
-			system("mkdir -p " RELOAD_SCRIPT_PATH);
+			if (system("mkdir -p " RELOAD_SCRIPT_PATH))
+				// if something deletes the path, restore it,
+				// and no snapshots for you until you fix it
+				return -1;
 		}
 
 		rp.minor = minor;
@@ -195,10 +203,10 @@ int elastio_snap_destroy(unsigned int minor){
 
 	ret = ioctl(fd, IOCTL_DESTROY, &minor);
 	if (ret == 0) {
-		char buf[BUF_SIZE];
+		char f_name[BUF_SIZE];
 
-		snprintf(buf, sizeof(buf), "%s/reload_%d.sh", RELOAD_SCRIPT_PATH, minor);
-		if (remove(buf))
+		snprintf(f_name, sizeof(f_name), "%s/reload_%d.sh", RELOAD_SCRIPT_PATH, minor);
+		if (access(f_name, F_OK) == 0 && remove(f_name))
 			printf("remove script reload file failed\n");
 	}
 
