@@ -16,7 +16,14 @@
 #include <dirent.h>
 #include "libelastio-snap.h"
 
+/* For any active snapshot/incremental, the reload script is created
+ * and placed inside this directory. After the reboot, on the system
+ * startup, the kernel mounts it and runs all scripts to restore the
+ * last state of the snapshot devices. When the snapshot is destroyed,
+ * the relevant script is removed.
+ */
 #define RELOAD_SCRIPT_PATH		"/etc/elastio/dla"
+#define ELIOCTL_BIN_PATH		"/usr/bin/"
 
 #define BUF_SIZE				512
 #define RELOAD_SCRIPT_BDEV_SIZE	128
@@ -39,7 +46,7 @@ int check_reload_dir()
 		return 0;
 	}
 
-	return 1;
+	return -1;
 }
 
 int elastio_snap_get_reload_params(unsigned int minor, struct reload_script_params *rp)
@@ -62,7 +69,9 @@ int elastio_snap_get_reload_params(unsigned int minor, struct reload_script_para
 		return -1;
 	}
 
-	ret = sscanf(buf, "/usr/bin/elioctl reload-%s -c %u %s %s %u %s", mode, &rp->cache_size, rp->bdev, rp->cow, &rp->minor, ignore_errors);
+	ret = sscanf(buf, ELIOCTL_BIN_PATH "elioctl reload-%s -c %u %s %s %u %s",
+			mode, &rp->cache_size, rp->bdev, rp->cow, &rp->minor, ignore_errors);
+
 	if (ret != 5 && ret != 6) {
 		printf("reload script parsing error\n");
 		fclose(fd);
@@ -96,7 +105,7 @@ int elastio_snap_set_reload_params(unsigned int minor, bool snapshot, const stru
 	if (!fd)
 		return -1;
 
-	int ret = snprintf(buf, sizeof(buf), "/usr/bin/elioctl reload-%s -c %u %s %s %u %s\n",
+	int ret = snprintf(buf, sizeof(buf), ELIOCTL_BIN_PATH "elioctl reload-%s -c %u %s %s %u %s\n",
 			snapshot ? "snapshot" : "incremental", rp->cache_size, rp->bdev,
 			rp->cow, rp->minor, rp->ignore_snap_errors ? "-i" : "");
 
