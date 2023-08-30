@@ -73,7 +73,6 @@ int elastio_snap_get_reload_params(unsigned int minor, struct reload_script_para
 			mode, &rp->cache_size, rp->bdev, rp->cow, &rp->minor, ignore_errors);
 
 	if (ret != 5 && ret != 6) {
-		printf("reload script parsing error\n");
 		fclose(fd);
 		return -1;
 	}
@@ -111,7 +110,6 @@ int elastio_snap_set_reload_params(unsigned int minor, bool snapshot, const stru
 
 	ret = fwrite(buf, 1, strlen(buf) + 1, fd);
 	if (ret == -1) {
-		printf("write error\n");
 		fclose(fd);
 		return -1;
 	}
@@ -119,7 +117,6 @@ int elastio_snap_set_reload_params(unsigned int minor, bool snapshot, const stru
 	fclose(fd);
 
 	if (chmod(f_name, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | S_IXGRP ) == -1) {
-		printf("set permissions error\n");
 		return -1;
 	}
 
@@ -158,8 +155,9 @@ int elastio_snap_setup_snapshot(unsigned int minor, char *bdev, char *cow, unsig
 		strcpy(rp.bdev, bdev);
 		strcpy(rp.cow, cow);
 
-		if (elastio_snap_set_reload_params(minor, true, &rp))
-			printf("update script params failed\n");
+		if (elastio_snap_set_reload_params(minor, true, &rp)) {
+			ret = ENOENT;
+		}
 	}
 
 	close(fd);
@@ -215,8 +213,9 @@ int elastio_snap_destroy(unsigned int minor){
 		char f_name[BUF_SIZE];
 
 		snprintf(f_name, sizeof(f_name), "%s/reload_%d.sh", RELOAD_SCRIPT_PATH, minor);
-		if (access(f_name, F_OK) == 0 && remove(f_name))
-			printf("remove script reload file failed\n");
+		if (access(f_name, F_OK) == 0 && remove(f_name)) {
+			ret = ENOENT;
+		}
 	}
 
 	close(fd);
@@ -232,11 +231,12 @@ int elastio_snap_transition_incremental(unsigned int minor){
 	ret = ioctl(fd, IOCTL_TRANSITION_INC, &minor);
 	if (ret == 0) {
 		struct reload_script_params rp;
-		if (elastio_snap_get_reload_params(minor, &rp))
-			printf("get script params failed\n");
-
-		if (elastio_snap_set_reload_params(minor, false, &rp))
-			printf("update script params failed\n");
+		if (elastio_snap_get_reload_params(minor, &rp) == 0) {
+			if (elastio_snap_set_reload_params(minor, false, &rp))
+				ret = ENOENT;
+		}
+	} else {
+		ret = ENOENT;
 	}
 
 	close(fd);
@@ -257,13 +257,13 @@ int elastio_snap_transition_snapshot(unsigned int minor, char *cow, unsigned lon
 	ret = ioctl(fd, IOCTL_TRANSITION_SNAP, &tp);
 	if (ret == 0) {
 		struct reload_script_params rp;
-		if (elastio_snap_get_reload_params(minor, &rp))
-			printf("get script params failed\n");
-
-		strcpy(rp.cow, cow);
-
-		if (elastio_snap_set_reload_params(minor, true, &rp))
-			printf("update script params failed\n");
+		if (elastio_snap_get_reload_params(minor, &rp) == 0) {
+			strcpy(rp.cow, cow);
+			if (elastio_snap_set_reload_params(minor, true, &rp))
+				ret = ENOENT;
+		}
+	} else {
+		ret = ENOENT;
 	}
 
 	close(fd);
@@ -283,13 +283,13 @@ int elastio_snap_reconfigure(unsigned int minor, unsigned long cache_size){
 	ret = ioctl(fd, IOCTL_RECONFIGURE, &rp);
 	if (ret == 0) {
 		struct reload_script_params rp;
-		if (elastio_snap_get_reload_params(minor, &rp))
-			printf("get script params failed\n");
-
-		rp.cache_size = cache_size;
-
-		if (elastio_snap_set_reload_params(minor, rp.snapshot, &rp))
-			printf("update script params failed\n");
+		if (elastio_snap_get_reload_params(minor, &rp) == 0) {
+			rp.cache_size = cache_size;
+			if (elastio_snap_set_reload_params(minor, rp.snapshot, &rp))
+				ret = ENOENT;
+		} else {
+			ret = ENOENT;
+		}
 	}
 
 	close(fd);
