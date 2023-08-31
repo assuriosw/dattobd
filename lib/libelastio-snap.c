@@ -234,9 +234,9 @@ int elastio_snap_transition_incremental(unsigned int minor){
 		if (elastio_snap_get_reload_params(minor, &rp) == 0) {
 			if (elastio_snap_set_reload_params(minor, false, &rp))
 				ret = ENOENT;
+		} else {
+			ret = ENOENT;
 		}
-	} else {
-		ret = ENOENT;
 	}
 
 	close(fd);
@@ -261,9 +261,9 @@ int elastio_snap_transition_snapshot(unsigned int minor, char *cow, unsigned lon
 			strcpy(rp.cow, cow);
 			if (elastio_snap_set_reload_params(minor, true, &rp))
 				ret = ENOENT;
+		} else {
+			ret = ENOENT;
 		}
-	} else {
-		ret = ENOENT;
 	}
 
 	close(fd);
