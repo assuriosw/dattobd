@@ -97,12 +97,23 @@ The current status of the elastio-snap driver can be read from the file `/proc/e
 * `nr_changed_blocks`: The number of blocks that have changed since the last snapshot.
 * `version`: Version of the on-disk format of the COW header.
 
+## Reload functionality
+
+When the block device is tracked, the driver handles the system restart by using reload scripts in the `/etc/elastio/dla` directory. Whenever the snapshot is created or changes its state, the relevant script
+is updated to restore the correct state of the device. Hence, for example, if the restart occurs during the active snapshot state, a script with the following structure is set up:
+
+```
+/usr/bin/elioctl reload-snapshot -c 0 /dev/vda3 /cow 0
+```
+These scripts are called on system start-up before the root volume is mounted to ensure the snapshot device is ready and waiting for the mount. When this occurs, the driver detects it, switches the device to
+an active mode and restores device tracking.
+
 ## Debugging
 
-There is a possibility to trace all driver events, including bio request tracing, in real-time. To build the driver with debug mode, use an additional flag:
+There is a possibility to trace all driver events, including bio request tracing, in real time. To build the driver with debug mode, use an additional flag:
 
 ```
 sudo make NETLINK_DEBUG=y
 ```
 
-Then use `nl_debug` utility to display the events.
+Then use the `nl_debug` utility to display the events.
