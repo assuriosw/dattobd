@@ -224,19 +224,19 @@ int elastio_snap_destroy(unsigned int minor){
 
 int elastio_snap_transition_incremental(unsigned int minor){
 	int fd, ret;
+	struct reload_script_params rp;
+
+	if (elastio_snap_get_reload_params(minor, &rp))
+		return ENOENT;
 
 	fd = open("/dev/elastio-snap-ctl", O_RDONLY);
 	if(fd < 0) return -1;
 
+
 	ret = ioctl(fd, IOCTL_TRANSITION_INC, &minor);
 	if (ret == 0) {
-		struct reload_script_params rp;
-		if (elastio_snap_get_reload_params(minor, &rp) == 0) {
-			if (elastio_snap_set_reload_params(minor, false, &rp))
-				ret = ENOENT;
-		} else {
+		if (elastio_snap_set_reload_params(minor, false, &rp))
 			ret = ENOENT;
-		}
 	}
 
 	close(fd);
@@ -245,25 +245,24 @@ int elastio_snap_transition_incremental(unsigned int minor){
 
 int elastio_snap_transition_snapshot(unsigned int minor, char *cow, unsigned long fallocated_space){
 	int fd, ret;
+	struct reload_script_params rp;
 	struct transition_snap_params tp;
 
 	tp.minor = minor;
 	tp.cow = cow;
 	tp.fallocated_space = fallocated_space;
 
+	if (elastio_snap_get_reload_params(minor, &rp))
+		return ENOENT;
+
 	fd = open("/dev/elastio-snap-ctl", O_RDONLY);
 	if(fd < 0) return -1;
 
 	ret = ioctl(fd, IOCTL_TRANSITION_SNAP, &tp);
 	if (ret == 0) {
-		struct reload_script_params rp;
-		if (elastio_snap_get_reload_params(minor, &rp) == 0) {
-			strcpy(rp.cow, cow);
-			if (elastio_snap_set_reload_params(minor, true, &rp))
-				ret = ENOENT;
-		} else {
+		strcpy(rp.cow, cow);
+		if (elastio_snap_set_reload_params(minor, true, &rp))
 			ret = ENOENT;
-		}
 	}
 
 	close(fd);
@@ -273,6 +272,10 @@ int elastio_snap_transition_snapshot(unsigned int minor, char *cow, unsigned lon
 int elastio_snap_reconfigure(unsigned int minor, unsigned long cache_size){
 	int fd, ret;
 	struct reconfigure_params rp;
+	struct reload_script_params rsp;
+
+	if (elastio_snap_get_reload_params(minor, &rsp))
+		return ENOENT;
 
 	fd = open("/dev/elastio-snap-ctl", O_RDONLY);
 	if(fd < 0) return -1;
@@ -282,14 +285,9 @@ int elastio_snap_reconfigure(unsigned int minor, unsigned long cache_size){
 
 	ret = ioctl(fd, IOCTL_RECONFIGURE, &rp);
 	if (ret == 0) {
-		struct reload_script_params rp;
-		if (elastio_snap_get_reload_params(minor, &rp) == 0) {
-			rp.cache_size = cache_size;
-			if (elastio_snap_set_reload_params(minor, rp.snapshot, &rp))
-				ret = ENOENT;
-		} else {
+		rsp.cache_size = cache_size;
+		if (elastio_snap_set_reload_params(minor, rsp.snapshot, &rsp))
 			ret = ENOENT;
-		}
 	}
 
 	close(fd);
