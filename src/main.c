@@ -6189,6 +6189,9 @@ static int __handle_bdev_mount_nowrite(const struct vfsmount *mnt, unsigned int 
 	tracer_for_each(dev, i){
 		if(!dev || !test_bit(ACTIVE, &dev->sd_state) || tracer_read_fail_state(dev) || dev->sd_base_dev != mnt->mnt_sb->s_bdev) continue;
 
+		if (mnt->mnt_root != elastio_snap_get_mnt(dev->sd_cow->filp)->mnt_root)
+			continue;
+
 		LOG_DEBUG("block device umount detected for device %d", i);
 		auto_transition_dormant(i);
 
@@ -6257,7 +6260,7 @@ static int handle_bdev_mount_event(const char __user *dir_name, int follow_flags
 
 	if(!(follow_flags & UMOUNT_NOFOLLOW)) lookup_flags |= LOOKUP_FOLLOW;
 
-	ret = user_path_at(0, dir_name, lookup_flags, &path);
+	ret = user_path_at(AT_FDCWD, dir_name, lookup_flags, &path);
 	if(ret){
 		//error finding path
 		goto out;
