@@ -6260,7 +6260,7 @@ static int handle_bdev_mount_event(const char __user *dir_name, int follow_flags
 
 	if(!(follow_flags & UMOUNT_NOFOLLOW)) lookup_flags |= LOOKUP_FOLLOW;
 
-	ret = user_path_at(AT_FDCWD, dir_name, lookup_flags, &path);
+	ret = user_path_at(0, dir_name, lookup_flags, &path);
 	if(ret){
 		//error finding path
 		goto out;
