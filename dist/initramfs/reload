@@ -1,6 +1,6 @@
 #!/bin/sh
 
-ls -l /etc/elastio/dla/mnt/etc/elastio/dla/reload_* > /dev/null 2>&1
+ls /etc/elastio/dla/mnt/etc/elastio/dla/reload_* > /dev/null 2>&1
 
 if [ "$?" = "0" ]; then
 	FILES="/etc/elastio/dla/mnt/etc/elastio/dla/reload_*"
