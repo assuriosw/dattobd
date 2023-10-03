@@ -111,7 +111,7 @@ class TestMultipart(DeviceTestCaseMultipart):
             os.sync()
 
             # TODO: norecovery option, probably, should not be here after the fix of the elastio/elastio-snap#63
-            opts = "nouuid,norecovery,ro" if (self.fs == "xfs") else "ro"
+            opts = "nouuid,ro" if (self.fs == "xfs") else "ro"
             util.mount(self.snap_devices[i], self.snap_mounts[i], opts)
             self.addCleanup(util.unmount, self.snap_mounts[i])
 

@@ -4392,9 +4392,10 @@ static MRF_RETURN_TYPE snap_mrf(struct bio *bio){
 	trace_event_bio(EVENT_BIO_INCOMING_SNAP_MRF, bio, 0);
 #endif
 
-	//if a write request somehow gets sent in, discard it
+	//if a write request somehow gets sent in, redirect it to the base device
 	if(bio_data_dir(bio)){
-		elastio_snap_bio_endio(bio, -EOPNOTSUPP);
+		elastio_snap_bio_set_dev(bio, dev->sd_base_dev);
+		elastio_snap_submit_bio(bio);
 		MRF_RETURN(0);
 	}else if(tracer_read_fail_state(dev)){
 		elastio_snap_bio_endio(bio, wrap_err_io(dev));
@@ -5100,9 +5101,6 @@ static int __tracer_setup_snap(struct snap_device *dev, unsigned int minor, stru
 	// the flag has been renamed in 5.17
 	dev->sd_gd->flags |= GENHD_FL_NO_PART;
 #endif
-
-	//set the device as read-only
-	set_disk_ro(dev->sd_gd, 1);
 
 	//register gendisk with the kernel
 	LOG_DEBUG("adding disk");
