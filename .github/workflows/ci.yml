@@ -81,7 +81,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v1-node16
         with:
           aws-region: ${{ env.AWS_DEFAULT_REGION }}
-          role-to-assume: ${{ secrets.ASSURIODEV_OIDC_AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.aws_assuriodev_role_arn }}
           role-duration-seconds: 10800  # 3 hours
 
       - name: Start a box
@@ -366,7 +366,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v1-node16
         with:
           aws-region: ${{ env.AWS_DEFAULT_REGION }}
-          role-to-assume: ${{ secrets.ASSURIODEV_OIDC_AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.aws_assuriodev_role_arn }}
 
       - name: Make manifest
         run: echo $GITHUB_RUN_NUMBER > latest && cat latest | grep -E '^[0-9]+$'
