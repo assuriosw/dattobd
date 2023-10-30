@@ -33,7 +33,10 @@ jobs:
           amazon2, amazon2023,
           centos7, centos8, centos9,
           debian8, debian9, debian10, debian11, debian12,
-          fedora31, fedora32, fedora34, fedora35, fedora36, fedora37, fedora38,
+          fedora31, fedora32, fedora34, fedora35, fedora36, fedora37,
+          # elastio-snap has been kept without support of kernel 6.5 and higher
+          # so we disable fedora38 because it has kernel 6.5
+          # fedora38,
           ubuntu2004, ubuntu2204
         ]
         arch: [ amd64 ]
@@ -58,8 +61,10 @@ jobs:
             arch: arm64
           - distro: fedora37
             arch: arm64
-          - distro: fedora38
-            arch: arm64
+          # elastio-snap has been kept without support of kernel 6.5 and higher
+          # so we disable fedora38 because it has kernel 6.5
+          # - distro: fedora38
+            # arch: arm64
           - distro: ubuntu2204
             arch: arm64
 
